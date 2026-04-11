@@ -1,0 +1,17 @@
+{
+  "name": "cast-loop",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.15.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @cast-loop/shared && npm run build --workspace @cast-loop/api && npm run build --workspace @cast-loop/web",
+    "dev:api": "npm run start:dev --workspace @cast-loop/api",
+    "dev:web": "npm run dev --workspace @cast-loop/web",
+    "lint": "npm run lint --workspace @cast-loop/api && npm run lint --workspace @cast-loop/web",
+    "test": "npm run test --workspace @cast-loop/api"
+  }
+}
