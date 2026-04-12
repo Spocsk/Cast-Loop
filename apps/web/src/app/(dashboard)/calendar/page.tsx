@@ -9,7 +9,6 @@ export default async function CalendarPage() {
       <header className="page-header">
         <span className="eyebrow">Calendrier</span>
         <h2>Programmation hebdomadaire</h2>
-        <p>Cette vue represente le contrat de l'endpoint `GET /calendar` et la cadence de publication inter-entreprises.</p>
       </header>
       <CalendarBoard items={snapshot.calendarItems} />
     </div>

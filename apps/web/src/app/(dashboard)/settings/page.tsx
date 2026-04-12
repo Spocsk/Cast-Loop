@@ -5,8 +5,7 @@ export default function SettingsPage() {
     <div className="page-stack">
       <header className="page-header">
         <span className="eyebrow">Parametres</span>
-        <h2>Etat de la stack</h2>
-        <p>Page de verification rapide pour le branchement des variables et la separation front/api.</p>
+        <h2>Configuration</h2>
       </header>
 
       <section className="grid-tiles">
@@ -19,7 +18,7 @@ export default function SettingsPage() {
         <article className="panel">
           <span className="eyebrow">API Nest</span>
           <strong>{webEnv.apiUrl}</strong>
-          <p>Le frontend appelle l'API REST versionnee via cette URL publique.</p>
+          <p className="muted">URL publique de l'API</p>
         </article>
       </section>
     </div>

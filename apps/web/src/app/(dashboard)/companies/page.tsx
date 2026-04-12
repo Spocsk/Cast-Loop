@@ -5,8 +5,7 @@ export default function CompaniesPage() {
     <div className="page-stack">
       <header className="page-header">
         <span className="eyebrow">Entreprises</span>
-        <h2>Spaces multi-tenant</h2>
-        <p>Chaque organisation possede ses membres, ses comptes sociaux, ses medias et ses posts.</p>
+        <h2>Organisations</h2>
       </header>
 
       <div className="grid-tiles">

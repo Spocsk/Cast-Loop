@@ -19,7 +19,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div>
           <p className="brand-kicker">Cast Loop</p>
           <h1>Social publishing cockpit</h1>
-          <p className="muted">Multi-tenant, centre agence, cadence editoriale unique.</p>
         </div>
 
         <nav className="sidebar-nav">
@@ -29,12 +28,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-
-        <div className="sidebar-card">
-          <span className="eyebrow">Execution mode</span>
-          <strong>Scheduler backend active</strong>
-          <p>Les posts dus sont traites par Nest toutes les minutes.</p>
-        </div>
       </aside>
 
       <main className="main-content">{children}</main>

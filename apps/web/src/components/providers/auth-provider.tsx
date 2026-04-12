@@ -8,26 +8,25 @@ export function LoginCard() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("Connecte ton projet Supabase pour activer l'authentification reelle.");
+  const [message, setMessage] = useState("");
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!supabase || !hasSupabaseClientEnv) {
-      setMessage("Variables Supabase manquantes. Configure NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+      setMessage("Configuration Supabase manquante.");
       return;
     }
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setMessage(error ? error.message : "Connexion reussie. La session Supabase est disponible dans le navigateur.");
+    setMessage(error ? error.message : "Connexion reussie.");
   };
 
   return (
     <form className="panel login-card" onSubmit={handleSubmit}>
       <div>
         <span className="eyebrow">Connexion</span>
-        <h1>Acces operateur</h1>
-        <p>Le frontend utilise Supabase Auth, puis transmet le JWT au backend Nest pour la validation tenant-aware.</p>
+        <h1>Se connecter</h1>
       </div>
 
       <label>

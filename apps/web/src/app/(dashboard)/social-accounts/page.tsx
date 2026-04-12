@@ -6,8 +6,7 @@ export default function SocialAccountsPage() {
     <div className="page-stack">
       <header className="page-header">
         <span className="eyebrow">Comptes sociaux</span>
-        <h2>Connexions business actives et a renouveler</h2>
-        <p>La v1 cible Facebook Pages, Instagram Business et LinkedIn Pages, avec expiration de token suivie en base.</p>
+        <h2>Connexions actives</h2>
       </header>
 
       {/* FIX: table-row attend 4 colonnes en CSS, ajout d'une 4e colonne (action placeholder) */}

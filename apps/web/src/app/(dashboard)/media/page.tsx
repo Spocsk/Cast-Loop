@@ -4,9 +4,8 @@ export default function MediaPage() {
   return (
     <div className="page-stack">
       <header className="page-header">
-        <span className="eyebrow">Bibliotheque media</span>
-        <h2>Assets stockes dans Supabase Storage</h2>
-        <p>Les uploads passent par une URL signee generee par Nest, puis l'asset est reference dans `media_assets`.</p>
+        <span className="eyebrow">Medias</span>
+        <h2>Bibliotheque</h2>
       </header>
 
       <section className="grid-tiles">

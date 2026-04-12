@@ -12,11 +12,7 @@ export default async function DashboardPage() {
       <section className="hero panel">
         <div>
           <span className="eyebrow">Vue d'ensemble</span>
-          <h2>Une cabine unique pour tes marques et celles de tes clients.</h2>
-          <p>
-            Le dashboard suit les drafts, les posts programmes, l'etat des comptes sociaux et les echecs de publication
-            sans melanger les tenants.
-          </p>
+          <h2>Tableau de bord</h2>
         </div>
         <div className="provider-stack">
           <ProviderPill provider="facebook" />
@@ -26,10 +22,10 @@ export default async function DashboardPage() {
       </section>
 
       <section className="stats-grid">
-        <StatCard label="Posts programmes" value={snapshot.kpis.scheduled} hint="Files d'attente prêtes pour le scheduler." />
-        <StatCard label="Brouillons" value={snapshot.kpis.drafts} hint="Contenus encore en cours d'edition." />
-        <StatCard label="Echecs" value={snapshot.kpis.failed} hint="A retravailler ou reconnecter." />
-        <StatCard label="Comptes connectes" value={snapshot.kpis.connectedAccounts} hint="Pages et comptes business actifs." />
+        <StatCard label="Programmes" value={snapshot.kpis.scheduled} hint="En attente de publication" />
+        <StatCard label="Brouillons" value={snapshot.kpis.drafts} hint="En cours d'edition" />
+        <StatCard label="Echecs" value={snapshot.kpis.failed} hint="A corriger" />
+        <StatCard label="Comptes" value={snapshot.kpis.connectedAccounts} hint="Connectes et actifs" />
       </section>
 
       <CalendarBoard items={snapshot.calendarItems} />
