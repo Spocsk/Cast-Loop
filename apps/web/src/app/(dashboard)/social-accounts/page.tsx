@@ -10,6 +10,7 @@ export default function SocialAccountsPage() {
         <p>La v1 cible Facebook Pages, Instagram Business et LinkedIn Pages, avec expiration de token suivie en base.</p>
       </header>
 
+      {/* FIX: table-row attend 4 colonnes en CSS, ajout d'une 4e colonne (action placeholder) */}
       <div className="table-list panel">
         {socialAccounts.map((account) => (
           <article key={account.id} className="table-row">
@@ -20,6 +21,9 @@ export default function SocialAccountsPage() {
             </div>
             <div>
               <span className={`status status-${account.status}`}>{account.status}</span>
+            </div>
+            <div>
+              <p className="muted">Expiration</p>
             </div>
             <div>
               <strong>{account.tokenExpiresAt ? new Date(account.tokenExpiresAt).toLocaleString("fr-FR") : "Aucun"}</strong>
