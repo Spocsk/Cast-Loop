@@ -1,7 +1,87 @@
+"use client";
+
+import { SocialAccountSummary } from "@cast-loop/shared";
+import { useEffect, useState } from "react";
+import { useSessionContext } from "@/components/providers/session-provider";
 import { ProviderPill } from "@/components/ui/provider-pill";
-import { socialAccounts } from "@/lib/mock-data";
+import { DataState } from "@/components/ui/data-state";
+import { fetchSocialAccounts } from "@/lib/api";
 
 export default function SocialAccountsPage() {
+  const { accessToken, activeOrganizationId, status } = useSessionContext();
+  const [accounts, setAccounts] = useState<SocialAccountSummary[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (status !== "authenticated") {
+      return;
+    }
+
+    if (!accessToken || !activeOrganizationId) {
+      setAccounts([]);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+
+    let active = true;
+    setIsLoading(true);
+    setError(null);
+
+    void fetchSocialAccounts(accessToken, activeOrganizationId)
+      .then((nextAccounts) => {
+        if (!active) return;
+        setAccounts(nextAccounts);
+      })
+      .catch((nextError) => {
+        if (!active) return;
+        setError(nextError instanceof Error ? nextError.message : "Impossible de charger les comptes sociaux.");
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accessToken, activeOrganizationId, status]);
+
+  if (isLoading || status !== "authenticated") {
+    return (
+      <DataState
+        eyebrow="Comptes sociaux"
+        title="Chargement des connexions"
+        description="Recuperation des comptes sociaux relies a l'organisation active."
+      />
+    );
+  }
+
+  if (!activeOrganizationId) {
+    return (
+      <DataState
+        eyebrow="Comptes sociaux"
+        title="Aucune organisation active"
+        description="Une organisation active est necessaire pour afficher les comptes sociaux."
+      />
+    );
+  }
+
+  if (error) {
+    return <DataState eyebrow="Comptes sociaux" title="Chargement impossible" description={error} />;
+  }
+
+  if (accounts.length === 0) {
+    return (
+      <DataState
+        eyebrow="Comptes sociaux"
+        title="Aucun compte connecte"
+        description="Ajoute un compte Facebook, Instagram ou LinkedIn pour commencer a publier."
+      />
+    );
+  }
+
   return (
     <div className="page-stack">
       <header className="page-header">
@@ -9,9 +89,13 @@ export default function SocialAccountsPage() {
         <h2>Connexions actives</h2>
       </header>
 
-      {/* FIX: table-row attend 4 colonnes en CSS, ajout d'une 4e colonne (action placeholder) */}
-      <div className="table-list panel">
-        {socialAccounts.map((account) => (
+      <div className="table-list table-list--accounts panel">
+        <header className="table-row table-header">
+          <span className="eyebrow">Compte</span>
+          <span className="eyebrow">Statut</span>
+          <span className="eyebrow">Expiration du token</span>
+        </header>
+        {accounts.map((account) => (
           <article key={account.id} className="table-row">
             <div>
               <ProviderPill provider={account.provider} />
@@ -22,10 +106,7 @@ export default function SocialAccountsPage() {
               <span className={`status status-${account.status}`}>{account.status}</span>
             </div>
             <div>
-              <p className="muted">Expiration</p>
-            </div>
-            <div>
-              <strong>{account.tokenExpiresAt ? new Date(account.tokenExpiresAt).toLocaleString("fr-FR") : "Aucun"}</strong>
+              <strong>{formatTokenExpiry(account.tokenExpiresAt)}</strong>
             </div>
           </article>
         ))}
@@ -33,3 +114,17 @@ export default function SocialAccountsPage() {
     </div>
   );
 }
+
+const formatTokenExpiry = (tokenExpiresAt: string | null) => {
+  if (!tokenExpiresAt) {
+    return "Aucun";
+  }
+
+  return new Date(tokenExpiresAt).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+};

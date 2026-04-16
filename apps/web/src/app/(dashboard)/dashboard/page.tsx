@@ -1,11 +1,97 @@
+"use client";
+
+import { SocialProvider } from "@cast-loop/shared";
+import { useEffect, useState } from "react";
 import { CalendarBoard } from "@/components/posts/calendar-board";
 import { PostsTable } from "@/components/posts/posts-table";
-import { StatCard } from "@/components/ui/stat-card";
+import { useSessionContext } from "@/components/providers/session-provider";
 import { ProviderPill } from "@/components/ui/provider-pill";
-import { getDashboardSnapshot } from "@/lib/api";
+import { StatCard } from "@/components/ui/stat-card";
+import { DataState } from "@/components/ui/data-state";
+import { DashboardSnapshot, getDashboardSnapshot } from "@/lib/api";
 
-export default async function DashboardPage() {
-  const snapshot = await getDashboardSnapshot();
+export default function DashboardPage() {
+  const { accessToken, activeOrganizationId, status } = useSessionContext();
+  const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (status !== "authenticated") {
+      return;
+    }
+
+    if (!accessToken || !activeOrganizationId) {
+      setSnapshot(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+
+    let active = true;
+    setIsLoading(true);
+    setError(null);
+
+    void getDashboardSnapshot(accessToken, activeOrganizationId)
+      .then((nextSnapshot) => {
+        if (!active) return;
+        setSnapshot(nextSnapshot);
+      })
+      .catch((nextError) => {
+        if (!active) return;
+        setError(nextError instanceof Error ? nextError.message : "Impossible de charger le tableau de bord.");
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accessToken, activeOrganizationId, status]);
+
+  if (isLoading || status !== "authenticated") {
+    return (
+      <DataState
+        eyebrow="Dashboard"
+        title="Connexion a Supabase"
+        description="Chargement des donnees reelles du cockpit de publication."
+      />
+    );
+  }
+
+  if (!activeOrganizationId) {
+    return (
+      <DataState
+        eyebrow="Dashboard"
+        title="Aucune organisation disponible"
+        description="Le compte connecte n'a encore aucune organisation associee dans Supabase."
+      />
+    );
+  }
+
+  if (error) {
+    return <DataState eyebrow="Dashboard" title="Chargement impossible" description={error} />;
+  }
+
+  if (!snapshot) {
+    return (
+      <DataState
+        eyebrow="Dashboard"
+        title="Aucune donnee disponible"
+        description="La session est active, mais aucun snapshot n'a pu etre construit."
+      />
+    );
+  }
+
+  const connectedProviders = Array.from(
+    new Set(
+      snapshot.socialAccounts
+        .filter((account) => account.status === "connected")
+        .map((account) => account.provider)
+    )
+  ) as SocialProvider[];
 
   return (
     <div className="page-stack">
@@ -15,9 +101,11 @@ export default async function DashboardPage() {
           <h2>Tableau de bord</h2>
         </div>
         <div className="provider-stack">
-          <ProviderPill provider="facebook" />
-          <ProviderPill provider="instagram" />
-          <ProviderPill provider="linkedin" />
+          {connectedProviders.length > 0 ? (
+            connectedProviders.map((provider) => <ProviderPill key={provider} provider={provider} />)
+          ) : (
+            <p className="muted">Aucun compte social connecte.</p>
+          )}
         </div>
       </section>
 
