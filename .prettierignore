@@ -1,0 +1,11 @@
+node_modules
+dist
+.next
+coverage
+.turbo
+.vercel
+pnpm-lock.yaml
+package-lock.json
+supabase/migrations/**/*.sql
+packages/shared/src/**/*.js
+packages/shared/src/**/*.js.map

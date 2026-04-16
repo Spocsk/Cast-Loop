@@ -1,16 +1,20 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, IBM_Plex_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
+import { SessionProvider } from "@/components/providers/session-provider";
 import "./globals.css";
 
-const bricolage = Bricolage_Grotesque({
+const inter = Inter({
   subsets: ["latin"],
-  variable: "--font-display"
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-display",
+  display: "swap"
 });
 
-const plexMono = IBM_Plex_Mono({
+const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
   weight: ["400", "500"],
-  variable: "--font-mono"
+  variable: "--font-mono",
+  display: "swap"
 });
 
 export const metadata: Metadata = {
@@ -21,7 +25,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr">
-      <body className={`${bricolage.variable} ${plexMono.variable}`}>{children}</body>
+      <body className={`${inter.variable} ${jetbrains.variable}`}>
+        <SessionProvider>{children}</SessionProvider>
+      </body>
     </html>
   );
 }

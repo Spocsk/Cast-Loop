@@ -10,3 +10,8 @@ coverage
 *.tsbuildinfo
 apps/api/.env
 apps/web/.env.local
+
+# Artefacts TypeScript compiles a cote des sources (ne jamais commiter).
+packages/shared/src/**/*.js
+packages/shared/src/**/*.js.map
+packages/shared/src/**/*.d.ts

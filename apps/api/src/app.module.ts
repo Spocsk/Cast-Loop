@@ -1,7 +1,22 @@
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { getAppEnv } from "./config/env";
+
+// Walk up from __dirname until we find a .env file (monorepo-layout agnostic).
+const findMonorepoEnv = (): string | undefined => {
+  let dir = __dirname;
+  for (let i = 0; i < 10; i++) {
+    const candidate = join(dir, ".env");
+    if (existsSync(candidate)) return candidate;
+    const parent = resolve(dir, "..");
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return undefined;
+};
 import { DatabaseModule } from "./database/database.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { AuditModule } from "./modules/audit/audit.module";
@@ -17,6 +32,7 @@ import { SocialAccountsModule } from "./modules/social-accounts/social-accounts.
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
+      envFilePath: findMonorepoEnv(),
       load: [getAppEnv]
     }),
     ScheduleModule.forRoot(),

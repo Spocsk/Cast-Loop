@@ -17,6 +17,35 @@ export class MediaService {
     private readonly auditService: AuditService
   ) {}
 
+  async listForOrganization(organizationId: string, userId: string) {
+    await this.organizationsService.assertMembership(organizationId, userId);
+
+    return this.databaseService.query<{
+      id: string;
+      organizationId: string;
+      storagePath: string;
+      mimeType: string;
+      fileSizeBytes: number;
+      width: number | null;
+      height: number | null;
+    }>(
+      `
+        select
+          id,
+          organization_id as "organizationId",
+          storage_path as "storagePath",
+          mime_type as "mimeType",
+          file_size_bytes as "fileSizeBytes",
+          width,
+          height
+        from media_assets
+        where organization_id = $1
+        order by created_at desc
+      `,
+      [organizationId]
+    );
+  }
+
   async createUploadUrl(userId: string, dto: CreateUploadUrlDto) {
     await this.organizationsService.assertMembership(dto.organizationId, userId);
 

@@ -10,9 +10,7 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
-    "paths": {
-      "@cast-loop/shared": ["../../packages/shared/src/index.ts"]
-    },
+    "paths": {},
     "incremental": true,
     "types": [
       "node",

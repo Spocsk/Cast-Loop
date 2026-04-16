@@ -11,7 +11,16 @@
     "build": "npm run build --workspace @cast-loop/shared && npm run build --workspace @cast-loop/api && npm run build --workspace @cast-loop/web",
     "dev:api": "npm run start:dev --workspace @cast-loop/api",
     "dev:web": "npm run dev --workspace @cast-loop/web",
-    "lint": "npm run lint --workspace @cast-loop/api && npm run lint --workspace @cast-loop/web",
+    "typecheck": "npm run lint --workspace @cast-loop/api && npm run lint --workspace @cast-loop/web",
+    "lint": "eslint \"{apps,packages}/**/src/**/*.{ts,tsx}\"",
+    "format": "prettier --write \"{apps,packages}/**/src/**/*.{ts,tsx,css,md}\"",
+    "format:check": "prettier --check \"{apps,packages}/**/src/**/*.{ts,tsx,css,md}\"",
     "test": "npm run test --workspace @cast-loop/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "typescript-eslint": "^8.19.0"
   }
 }

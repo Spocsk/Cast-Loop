@@ -1,41 +1,108 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { Route } from "next";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
+import { useSessionContext } from "@/components/providers/session-provider";
+import { getGravatarUrl } from "@/lib/gravatar";
 
 const navigation: Array<{ href: Route; label: string }> = [
   { href: "/dashboard", label: "Overview" },
   { href: "/calendar", label: "Calendrier" },
   { href: "/posts", label: "Posts" },
-  { href: "/media", label: "Medias" },
+  { href: "/media", label: "Médias" },
   { href: "/companies", label: "Entreprises" },
   { href: "/social-accounts", label: "Comptes sociaux" },
-  { href: "/settings", label: "Parametres" }
+  { href: "/settings", label: "Paramètres" }
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const { user } = useSessionContext();
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  const userDisplayName = useMemo(() => {
+    if (!user) return null;
+    if (user.fullName?.trim()) return user.fullName;
+    return user.email.split("@")[0];
+  }, [user]);
+
+  const gravatarUrl = useMemo(() => {
+    if (!user?.email) return null;
+    return getGravatarUrl(user.email, 96);
+  }, [user]);
+
+  useEffect(() => {
+    setIsMobileNavOpen(false);
+  }, [pathname]);
+
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div>
-          <p className="brand-kicker">Cast Loop</p>
-          <h1>Social publishing cockpit</h1>
-          <p className="muted">Multi-tenant, centre agence, cadence editoriale unique.</p>
+    <div className={`app-shell ${isMobileNavOpen ? "nav-open" : ""}`}>
+      <aside className={`sidebar ${isMobileNavOpen ? "sidebar-open" : ""}`}>
+        <div className="sidebar-mobile-bar">
+          <div className="sidebar-brand">
+            <p className="brand-kicker">Cast Loop</p>
+            <h1>Cockpit de publication</h1>
+          </div>
+
+          <div className="sidebar-mobile-actions">
+            {user && userDisplayName && gravatarUrl ? (
+              <div className="sidebar-user-chip" aria-label={`Connecte en tant que ${userDisplayName}`}>
+                <img src={gravatarUrl} alt="" className="sidebar-user-avatar" />
+                <span>{userDisplayName}</span>
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              className="sidebar-toggle"
+              aria-expanded={isMobileNavOpen}
+              aria-controls="sidebar-navigation"
+              aria-label={isMobileNavOpen ? "Fermer le menu" : "Ouvrir le menu"}
+              onClick={() => setIsMobileNavOpen((open) => !open)}
+            >
+              <span />
+              <span />
+              <span />
+            </button>
+          </div>
         </div>
 
-        <nav className="sidebar-nav">
-          {navigation.map((item) => (
-            <Link key={item.href} href={item.href}>
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <div className="sidebar-panel">
+          <nav id="sidebar-navigation" className="sidebar-nav">
+            {navigation.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={pathname === item.href ? "active" : ""}
+                onClick={() => setIsMobileNavOpen(false)}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
 
-        <div className="sidebar-card">
-          <span className="eyebrow">Execution mode</span>
-          <strong>Scheduler backend active</strong>
-          <p>Les posts dus sont traites par Nest toutes les minutes.</p>
+          {user && userDisplayName && gravatarUrl ? (
+            <div className="sidebar-user-card">
+              <img src={gravatarUrl} alt="" className="sidebar-user-avatar" />
+              <div className="sidebar-user-meta">
+                <span className="eyebrow">Connecte</span>
+                <strong>{userDisplayName}</strong>
+                <p>{user.email}</p>
+              </div>
+            </div>
+          ) : null}
         </div>
       </aside>
+
+      <button
+        type="button"
+        className="sidebar-backdrop"
+        aria-hidden={!isMobileNavOpen}
+        tabIndex={isMobileNavOpen ? 0 : -1}
+        onClick={() => setIsMobileNavOpen(false)}
+      />
 
       <main className="main-content">{children}</main>
     </div>
