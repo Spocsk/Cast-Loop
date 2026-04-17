@@ -7,4 +7,8 @@ export class ListPostsDto {
   @IsOptional()
   @IsIn(["draft", "scheduled", "publishing", "published", "failed", "cancelled"])
   state?: "draft" | "scheduled" | "publishing" | "published" | "failed" | "cancelled";
+
+  @IsOptional()
+  @IsIn(["active", "archived"])
+  visibility?: "active" | "archived";
 }

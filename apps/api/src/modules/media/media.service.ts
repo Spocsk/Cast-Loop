@@ -94,9 +94,50 @@ export class MediaService {
 
     return {
       assetId: asset.id,
+      bucket,
       path: data.path,
       token: data.token,
       signedUrl: data.signedUrl
+    };
+  }
+
+  async createViewUrl(userId: string, organizationId: string, assetId: string) {
+    await this.organizationsService.assertMembership(organizationId, userId);
+
+    const [asset] = await this.databaseService.query<{
+      id: string;
+      storageBucket: string;
+      storagePath: string;
+    }>(
+      `
+        select
+          id,
+          storage_bucket as "storageBucket",
+          storage_path as "storagePath"
+        from media_assets
+        where id = $1
+          and organization_id = $2
+      `,
+      [assetId, organizationId]
+    );
+
+    if (!asset) {
+      throw new BadRequestException("Media introuvable pour cette organisation.");
+    }
+
+    const expiresInSeconds = 3600;
+    const { data, error } = await this.supabaseAdminService.client.storage
+      .from(asset.storageBucket)
+      .createSignedUrl(asset.storagePath, expiresInSeconds);
+
+    if (error || !data?.signedUrl) {
+      throw new BadRequestException(error?.message ?? "Impossible de generer l'URL de consultation du media.");
+    }
+
+    return {
+      assetId,
+      signedUrl: data.signedUrl,
+      expiresInSeconds
     };
   }
 }

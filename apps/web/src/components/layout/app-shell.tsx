@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 import type { Route } from "next";
 import { ReactNode, useEffect, useMemo, useState } from "react";
@@ -18,8 +19,9 @@ const navigation: Array<{ href: Route; label: string }> = [
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const pathname = usePathname();
-  const { user } = useSessionContext();
+  const { user, signOut } = useSessionContext();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const userDisplayName = useMemo(() => {
@@ -36,6 +38,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     setIsMobileNavOpen(false);
   }, [pathname]);
+
+  const handleSignOut = async () => {
+    await signOut();
+    setIsMobileNavOpen(false);
+    router.push("/auth/login");
+  };
 
   return (
     <div className={`app-shell ${isMobileNavOpen ? "nav-open" : ""}`}>
@@ -91,6 +99,32 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <strong>{userDisplayName}</strong>
                 <p>{user.email}</p>
               </div>
+              <button
+                type="button"
+                className="sidebar-signout-button"
+                aria-label="Se déconnecter"
+                title="Se déconnecter"
+                onClick={handleSignOut}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M14 7.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M10 12h10m0 0-3.5-3.5M20 12l-3.5 3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
             </div>
           ) : null}
         </div>

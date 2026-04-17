@@ -10,6 +10,9 @@ export type SocialAccountStatus = (typeof socialAccountStatuses)[number];
 export const postStates = ["draft", "scheduled", "publishing", "published", "failed", "cancelled"] as const;
 export type PostState = (typeof postStates)[number];
 
+export const postVisibilities = ["active", "archived"] as const;
+export type PostVisibility = (typeof postVisibilities)[number];
+
 export const postTargetStatuses = ["pending", "published", "failed", "cancelled"] as const;
 export type PostTargetStatus = (typeof postTargetStatuses)[number];
 
@@ -54,9 +57,70 @@ export interface PostSummary {
   title: string;
   content: string;
   scheduledAt: string | null;
+  archivedAt: string | null;
   state: PostState;
   primaryMediaAssetId: string | null;
   targetCount: number;
+  targetSocialAccountIds: string[];
+}
+
+export interface CreatePostInput {
+  organizationId: string;
+  title: string;
+  content: string;
+  primaryMediaAssetId?: string;
+  targetSocialAccountIds?: string[];
+  scheduledAt?: string;
+}
+
+export interface CreatePostResult {
+  id: string;
+  organizationId: string;
+  title: string;
+  content: string;
+  scheduledAt: string | null;
+  state: PostState;
+}
+
+export interface UpdatePostInput {
+  organizationId: string;
+  title: string;
+  content: string;
+  primaryMediaAssetId?: string;
+  targetSocialAccountIds?: string[];
+  scheduledAt?: string;
+}
+
+export interface UpdatePostResult {
+  id: string;
+  organizationId: string;
+  title: string;
+  content: string;
+  scheduledAt: string | null;
+  state: PostState;
+}
+
+export interface CreateMediaUploadUrlInput {
+  organizationId: string;
+  fileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  width?: number;
+  height?: number;
+}
+
+export interface CreateMediaUploadUrlResult {
+  assetId: string;
+  bucket: string;
+  path: string;
+  token: string;
+  signedUrl: string;
+}
+
+export interface MediaAssetViewUrlResult {
+  assetId: string;
+  signedUrl: string;
+  expiresInSeconds: number;
 }
 
 export interface CalendarPostItem {

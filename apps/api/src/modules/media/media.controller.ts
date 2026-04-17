@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { SupabaseAuthGuard } from "../../common/guards/supabase-auth.guard";
 import { CreateUploadUrlDto } from "./dto/create-upload-url.dto";
@@ -12,6 +12,15 @@ export class MediaController {
   @Get()
   async list(@CurrentUser() user: { id: string }, @Query("organizationId") organizationId: string) {
     return this.mediaService.listForOrganization(organizationId, user.id);
+  }
+
+  @Get(":id/view-url")
+  async createViewUrl(
+    @CurrentUser() user: { id: string },
+    @Param("id") assetId: string,
+    @Query("organizationId") organizationId: string
+  ) {
+    return this.mediaService.createViewUrl(user.id, organizationId, assetId);
   }
 
   @Post("upload-url")

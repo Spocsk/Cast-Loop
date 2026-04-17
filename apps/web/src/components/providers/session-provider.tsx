@@ -31,11 +31,12 @@ interface SessionContextValue {
   activeOrganizationId: string | null;
   error: string | null;
   refreshSession: () => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
-const initialState: Omit<SessionContextValue, "refreshSession"> = {
+const initialState: Omit<SessionContextValue, "refreshSession" | "signOut"> = {
   status: "loading",
   accessToken: null,
   session: null,
@@ -140,6 +141,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         data: { session }
       } = await supabase.auth.getSession();
       await syncSession(session);
+    },
+    signOut: async () => {
+      if (!supabase) return;
+      await supabase.auth.signOut();
+      setState({
+        ...initialState,
+        status: "unauthenticated"
+      });
     }
   };
 
