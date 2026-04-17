@@ -1,7 +1,7 @@
 "use client";
 
 import { SocialProvider } from "@cast-loop/shared";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CalendarBoard } from "@/components/posts/calendar-board";
 import { PostsTable } from "@/components/posts/posts-table";
 import { useSessionContext } from "@/components/providers/session-provider";
@@ -15,6 +15,16 @@ export default function DashboardPage() {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const loadSnapshot = useCallback(async () => {
+    if (!accessToken || !activeOrganizationId) return;
+    try {
+      const nextSnapshot = await getDashboardSnapshot(accessToken, activeOrganizationId);
+      setSnapshot(nextSnapshot);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Impossible de charger le tableau de bord.");
+    }
+  }, [accessToken, activeOrganizationId]);
 
   useEffect(() => {
     if (status !== "authenticated") {
@@ -117,7 +127,7 @@ export default function DashboardPage() {
       </section>
 
       <CalendarBoard items={snapshot.calendarItems} />
-      <PostsTable items={snapshot.posts} />
+      <PostsTable items={snapshot.posts} onRefresh={loadSnapshot} />
     </div>
   );
 }

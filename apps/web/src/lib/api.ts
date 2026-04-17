@@ -1,14 +1,23 @@
 import {
   CalendarPostItem,
+  CreateMediaUploadUrlInput,
+  CreateMediaUploadUrlResult,
+  CreatePostInput,
+  CreatePostResult,
+  MediaAssetViewUrlResult,
   OrganizationSummary,
+  PostVisibility,
   PostState,
   PostSummary,
   SocialAccountSummary,
   MediaAssetSummary,
   AuthenticatedAppUser,
-  OrganizationRole
+  OrganizationRole,
+  UpdatePostInput,
+  UpdatePostResult
 } from "@cast-loop/shared";
 import { webEnv } from "./env";
+import { createSupabaseBrowserClient } from "./supabase/client";
 
 interface Membership {
   organizationId: string;
@@ -101,12 +110,19 @@ export async function fetchOrganizations(accessToken: string) {
   return apiRequest<OrganizationSummary[]>("/organizations", accessToken);
 }
 
-export async function fetchPosts(accessToken: string, organizationId: string, state?: PostState) {
+export async function fetchPosts(
+  accessToken: string,
+  organizationId: string,
+  state?: PostState,
+  visibility: PostVisibility = "active"
+) {
   const searchParams = new URLSearchParams({ organizationId });
 
   if (state) {
     searchParams.set("state", state);
   }
+
+  searchParams.set("visibility", visibility);
 
   return apiRequest<PostSummary[]>("/posts", accessToken, undefined, searchParams);
 }
@@ -128,6 +144,76 @@ export async function fetchSocialAccounts(accessToken: string, organizationId: s
 export async function fetchMediaAssets(accessToken: string, organizationId: string) {
   const searchParams = new URLSearchParams({ organizationId });
   return apiRequest<MediaAssetSummary[]>("/media", accessToken, undefined, searchParams);
+}
+
+export async function fetchMediaAssetViewUrl(accessToken: string, organizationId: string, assetId: string) {
+  const searchParams = new URLSearchParams({ organizationId });
+  return apiRequest<MediaAssetViewUrlResult>(`/media/${assetId}/view-url`, accessToken, undefined, searchParams);
+}
+
+export async function createPost(accessToken: string, payload: CreatePostInput) {
+  return apiRequest<CreatePostResult>("/posts", accessToken, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updatePost(accessToken: string, postId: string, payload: UpdatePostInput) {
+  return apiRequest<UpdatePostResult>(`/posts/${postId}`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function archivePost(accessToken: string, postId: string, organizationId: string) {
+  return apiRequest<{ id: string; archivedAt: string }>(`/posts/${postId}/archive`, accessToken, {
+    method: "POST",
+    body: JSON.stringify({ organizationId })
+  });
+}
+
+export async function restorePost(accessToken: string, postId: string, organizationId: string) {
+  return apiRequest<{ id: string; archivedAt: string | null }>(`/posts/${postId}/restore`, accessToken, {
+    method: "POST",
+    body: JSON.stringify({ organizationId })
+  });
+}
+
+export async function deletePost(accessToken: string, postId: string, organizationId: string) {
+  return apiRequest<{ id: string; deleted: true }>(`/posts/${postId}`, accessToken, {
+    method: "DELETE",
+    body: JSON.stringify({ organizationId })
+  });
+}
+
+export async function createMediaUploadUrl(accessToken: string, payload: CreateMediaUploadUrlInput) {
+  return apiRequest<CreateMediaUploadUrlResult>("/media/upload-url", accessToken, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function uploadImageToSignedUrl(params: {
+  bucket: string;
+  path: string;
+  token: string;
+  file: File;
+}) {
+  const supabase = createSupabaseBrowserClient();
+
+  if (!supabase) {
+    throw new Error("Supabase n'est pas configure pour l'upload.");
+  }
+
+  const { error } = await supabase.storage
+    .from(params.bucket)
+    .uploadToSignedUrl(params.path, params.token, params.file, {
+      contentType: params.file.type
+    });
+
+  if (error) {
+    throw new Error(error.message ?? "Echec de l'upload du fichier.");
+  }
 }
 
 export async function getDashboardSnapshot(accessToken: string, organizationId: string) {

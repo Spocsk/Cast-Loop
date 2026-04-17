@@ -1,7 +1,12 @@
+"use client";
+
 import { CalendarPostItem } from "@cast-loop/shared";
+import { useState } from "react";
 import { ProviderPill } from "../ui/provider-pill";
 
 export function CalendarBoard({ items }: { items: CalendarPostItem[] }) {
+  const [view, setView] = useState("month");
+
   return (
     <div className="panel timeline-panel">
       <div className="section-heading">
@@ -9,9 +14,18 @@ export function CalendarBoard({ items }: { items: CalendarPostItem[] }) {
           <span className="eyebrow">Calendrier</span>
           <h2>Prochaines publications</h2>
         </div>
-        <button className="secondary-button secondary-button-filter" type="button">
-          Vue mensuelle
-        </button>
+        <label className="timeline-view-control">
+          <span className="sr-only">Choisir une vue du calendrier</span>
+          <select
+            className="timeline-view-select"
+            value={view}
+            onChange={(event) => setView(event.target.value)}
+          >
+            <option value="month">Vue mensuelle</option>
+            <option value="week">Vue hebdomadaire</option>
+            <option value="day">Vue quotidienne</option>
+          </select>
+        </label>
       </div>
 
       <div className="timeline">

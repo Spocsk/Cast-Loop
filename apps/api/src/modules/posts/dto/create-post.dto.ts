@@ -17,9 +17,10 @@ export class CreatePostDto {
   @IsUUID()
   primaryMediaAssetId?: string;
 
+  @IsOptional()
   @IsArray()
   @IsUUID("4", { each: true })
-  targetSocialAccountIds!: string[];
+  targetSocialAccountIds?: string[];
 
   @IsOptional()
   @IsISO8601()

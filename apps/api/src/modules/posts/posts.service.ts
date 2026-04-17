@@ -6,6 +6,7 @@ import { OrganizationsService } from "../organizations/organizations.service";
 import { CreatePostDto } from "./dto/create-post.dto";
 import { ListPostsDto } from "./dto/list-posts.dto";
 import { SchedulePostDto } from "./dto/schedule-post.dto";
+import { UpdatePostDto } from "./dto/update-post.dto";
 
 @Injectable()
 export class PostsService {
@@ -20,6 +21,9 @@ export class PostsService {
 
     const params: unknown[] = [query.organizationId];
     const filters = ["p.organization_id = $1"];
+    const visibility = query.visibility ?? "active";
+
+    filters.push(visibility === "archived" ? "p.archived_at is not null" : "p.archived_at is null");
 
     if (query.state) {
       params.push(query.state);
@@ -34,9 +38,11 @@ export class PostsService {
           p.title,
           p.content,
           p.scheduled_at as "scheduledAt",
+          p.archived_at as "archivedAt",
           p.state,
           p.primary_media_asset_id as "primaryMediaAssetId",
-          count(pt.id)::int as "targetCount"
+          count(pt.id)::int as "targetCount",
+          coalesce(array_remove(array_agg(pt.social_account_id), null), '{}'::uuid[]) as "targetSocialAccountIds"
         from posts p
         left join post_targets pt on pt.post_id = p.id
         where ${filters.join(" and ")}
@@ -49,7 +55,18 @@ export class PostsService {
 
   async create(userId: string, dto: CreatePostDto) {
     await this.organizationsService.assertMembership(dto.organizationId, userId);
-    await this.assertTargetAccounts(dto.organizationId, dto.targetSocialAccountIds);
+
+    const targetIds = [...new Set(dto.targetSocialAccountIds ?? [])];
+
+    if (dto.scheduledAt) {
+      if (targetIds.length === 0) {
+        throw new BadRequestException("Au moins un compte cible est requis pour planifier un post");
+      }
+      await this.assertTargetAccounts(dto.organizationId, targetIds);
+      await this.assertTargetAccountsConnected(dto.organizationId, targetIds);
+    } else if (targetIds.length > 0) {
+      await this.assertTargetAccounts(dto.organizationId, targetIds);
+    }
 
     const state: PostState = dto.scheduledAt ? "scheduled" : "draft";
 
@@ -85,7 +102,7 @@ export class PostsService {
         client
       );
 
-      for (const targetId of dto.targetSocialAccountIds) {
+      for (const targetId of targetIds) {
         await this.databaseService.query(
           `
             insert into post_targets (post_id, social_account_id, provider, status)
@@ -108,6 +125,89 @@ export class PostsService {
           payload: {
             title: dto.title,
             scheduledAt: dto.scheduledAt ?? null
+          }
+        },
+        client
+      );
+
+      return post;
+    });
+  }
+
+  async update(userId: string, postId: string, dto: UpdatePostDto) {
+    await this.organizationsService.assertMembership(dto.organizationId, userId);
+    await this.assertPostEditable(postId, dto.organizationId);
+
+    const targetIds = [...new Set(dto.targetSocialAccountIds ?? [])];
+
+    if (dto.scheduledAt) {
+      if (targetIds.length === 0) {
+        throw new BadRequestException("Au moins un compte cible est requis pour planifier un post");
+      }
+      await this.assertTargetAccounts(dto.organizationId, targetIds);
+      await this.assertTargetAccountsConnected(dto.organizationId, targetIds);
+    } else if (targetIds.length > 0) {
+      await this.assertTargetAccounts(dto.organizationId, targetIds);
+    }
+
+    const state: PostState = dto.scheduledAt ? "scheduled" : "draft";
+
+    return this.databaseService.transaction(async (client) => {
+      const [post] = await this.databaseService.query<{
+        id: string;
+        organizationId: string;
+        title: string;
+        content: string;
+        scheduledAt: string | null;
+        state: PostState;
+      }>(
+        `
+          update posts
+          set title = $1,
+              content = $2,
+              primary_media_asset_id = $3,
+              scheduled_at = $4,
+              state = $5,
+              updated_at = now()
+          where id = $6 and organization_id = $7
+          returning
+            id,
+            organization_id as "organizationId",
+            title,
+            content,
+            scheduled_at as "scheduledAt",
+            state
+        `,
+        [dto.title, dto.content, dto.primaryMediaAssetId ?? null, dto.scheduledAt ?? null, state, postId, dto.organizationId],
+        client
+      );
+
+      await this.databaseService.query("delete from post_targets where post_id = $1", [postId], client);
+
+      for (const targetId of targetIds) {
+        await this.databaseService.query(
+          `
+            insert into post_targets (post_id, social_account_id, provider, status)
+            select $1, sa.id, sa.provider, 'pending'
+            from social_accounts sa
+            where sa.id = $2
+          `,
+          [postId, targetId],
+          client
+        );
+      }
+
+      await this.auditService.record(
+        {
+          organizationId: dto.organizationId,
+          actorUserId: userId,
+          entityType: "post",
+          entityId: postId,
+          action: "post.updated",
+          payload: {
+            title: dto.title,
+            scheduledAt: dto.scheduledAt ?? null,
+            targetCount: targetIds.length
           }
         },
         client
@@ -193,6 +293,104 @@ export class PostsService {
     return { id: postId, state: "cancelled" };
   }
 
+  async archive(userId: string, postId: string, organizationId: string) {
+    await this.organizationsService.assertMembership(organizationId, userId);
+    const post = await this.assertPostEditable(postId, organizationId);
+
+    const [archivedPost] = await this.databaseService.query<{ id: string; archivedAt: string }>(
+      `
+        update posts
+        set archived_at = now(),
+            updated_at = now()
+        where id = $1 and organization_id = $2
+        returning id, archived_at as "archivedAt"
+      `,
+      [postId, organizationId]
+    );
+
+    await this.auditService.record({
+      organizationId,
+      actorUserId: userId,
+      entityType: "post",
+      entityId: postId,
+      action: "post.archived",
+      payload: { previousState: post.state }
+    });
+
+    return archivedPost;
+  }
+
+  async restore(userId: string, postId: string, organizationId: string) {
+    await this.organizationsService.assertMembership(organizationId, userId);
+    const post = await this.getPostRecord(postId, organizationId);
+
+    if (!post.archivedAt) {
+      throw new BadRequestException("Ce post n'est pas archive.");
+    }
+
+    if (!this.isMutablePostState(post.state)) {
+      throw new BadRequestException("Seuls les posts draft et scheduled peuvent etre restaures.");
+    }
+
+    const [restoredPost] = await this.databaseService.query<{ id: string; archivedAt: string | null }>(
+      `
+        update posts
+        set archived_at = null,
+            updated_at = now()
+        where id = $1 and organization_id = $2
+        returning id, archived_at as "archivedAt"
+      `,
+      [postId, organizationId]
+    );
+
+    await this.auditService.record({
+      organizationId,
+      actorUserId: userId,
+      entityType: "post",
+      entityId: postId,
+      action: "post.restored",
+      payload: { restoredState: post.state }
+    });
+
+    return restoredPost;
+  }
+
+  async deleteArchived(userId: string, postId: string, organizationId: string) {
+    await this.organizationsService.assertMembership(organizationId, userId);
+    const post = await this.getPostRecord(postId, organizationId);
+
+    if (!post.archivedAt) {
+      throw new BadRequestException("Archivez d'abord le post avant de le supprimer definitivement.");
+    }
+
+    await this.databaseService.transaction(async (client) => {
+      await this.databaseService.query(
+        `
+          delete from posts
+          where id = $1
+            and organization_id = $2
+            and archived_at is not null
+        `,
+        [postId, organizationId],
+        client
+      );
+
+      await this.auditService.record(
+        {
+          organizationId,
+          actorUserId: userId,
+          entityType: "post",
+          entityId: postId,
+          action: "post.deleted",
+          payload: { previousState: post.state }
+        },
+        client
+      );
+    });
+
+    return { id: postId, deleted: true };
+  }
+
   async claimDuePosts(limit = 10) {
     return this.databaseService.transaction(async (client) => {
       const posts = await this.databaseService.query<{ id: string }>(
@@ -200,6 +398,7 @@ export class PostsService {
           select id
           from posts
           where state = 'scheduled'
+            and archived_at is null
             and scheduled_at is not null
             and scheduled_at <= now()
           order by scheduled_at asc
@@ -381,11 +580,23 @@ export class PostsService {
     }
   }
 
-  private async assertTargetAccounts(organizationId: string, targetIds: string[]) {
-    if (!targetIds.length) {
-      throw new BadRequestException("At least one target account is required");
-    }
+  private async assertTargetAccountsConnected(organizationId: string, targetIds: string[]) {
+    const accounts = await this.databaseService.query<{ id: string; status: string }>(
+      `
+        select id, status
+        from social_accounts
+        where organization_id = $1
+          and id = any($2::uuid[])
+      `,
+      [organizationId, targetIds]
+    );
 
+    if (accounts.some((account) => account.status !== "connected")) {
+      throw new BadRequestException("Tous les comptes cibles doivent etre connectes avant de planifier");
+    }
+  }
+
+  private async assertTargetAccounts(organizationId: string, targetIds: string[]) {
     const accounts = await this.databaseService.query<{ id: string }>(
       `
         select id
@@ -401,10 +612,32 @@ export class PostsService {
     }
   }
 
-  private async assertPostOwnership(postId: string, organizationId: string) {
-    const [post] = await this.databaseService.query<{ id: string }>(
+  private async assertPostEditable(postId: string, organizationId: string) {
+    const post = await this.getPostRecord(postId, organizationId);
+
+    if (post.archivedAt) {
+      throw new BadRequestException("Un post archive doit etre restaure avant modification.");
+    }
+
+    if (!this.isMutablePostState(post.state)) {
+      throw new BadRequestException("Seuls les posts draft et scheduled peuvent etre modifies.");
+    }
+
+    return post;
+  }
+
+  private isMutablePostState(state: PostState) {
+    return state === "draft" || state === "scheduled";
+  }
+
+  private async getPostRecord(postId: string, organizationId: string) {
+    const [post] = await this.databaseService.query<{
+      id: string;
+      state: PostState;
+      archivedAt: string | null;
+    }>(
       `
-        select id
+        select id, state, archived_at as "archivedAt"
         from posts
         where id = $1 and organization_id = $2
       `,
@@ -414,5 +647,11 @@ export class PostsService {
     if (!post) {
       throw new NotFoundException("Post not found for this organization");
     }
+
+    return post;
+  }
+
+  private async assertPostOwnership(postId: string, organizationId: string) {
+    await this.getPostRecord(postId, organizationId);
   }
 }

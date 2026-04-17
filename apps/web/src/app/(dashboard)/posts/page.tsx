@@ -1,7 +1,7 @@
 "use client";
 
-import { PostSummary } from "@cast-loop/shared";
-import { useEffect, useState } from "react";
+import { PostSummary, PostVisibility } from "@cast-loop/shared";
+import { useCallback, useEffect, useState } from "react";
 import { PostsTable } from "@/components/posts/posts-table";
 import { useSessionContext } from "@/components/providers/session-provider";
 import { DataState } from "@/components/ui/data-state";
@@ -10,8 +10,19 @@ import { fetchPosts } from "@/lib/api";
 export default function PostsPage() {
   const { accessToken, activeOrganizationId, status } = useSessionContext();
   const [posts, setPosts] = useState<PostSummary[]>([]);
+  const [visibility, setVisibility] = useState<PostVisibility>("active");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const loadPosts = useCallback(async () => {
+    if (!accessToken || !activeOrganizationId) return;
+    try {
+      const nextPosts = await fetchPosts(accessToken, activeOrganizationId, undefined, visibility);
+      setPosts(nextPosts);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Impossible de charger les publications.");
+    }
+  }, [accessToken, activeOrganizationId, visibility]);
 
   useEffect(() => {
     if (status !== "authenticated") {
@@ -29,7 +40,7 @@ export default function PostsPage() {
     setIsLoading(true);
     setError(null);
 
-    void fetchPosts(accessToken, activeOrganizationId)
+    void fetchPosts(accessToken, activeOrganizationId, undefined, visibility)
       .then((nextPosts) => {
         if (!active) return;
         setPosts(nextPosts);
@@ -46,7 +57,7 @@ export default function PostsPage() {
     return () => {
       active = false;
     };
-  }, [accessToken, activeOrganizationId, status]);
+  }, [accessToken, activeOrganizationId, status, visibility]);
 
   if (isLoading || status !== "authenticated") {
     return (
@@ -78,15 +89,13 @@ export default function PostsPage() {
         <span className="eyebrow">Posts</span>
         <h2>Publications et brouillons</h2>
       </header>
-      {posts.length > 0 ? (
-        <PostsTable items={posts} />
-      ) : (
-        <DataState
-          eyebrow="Posts"
-          title="Aucun post en base"
-          description="Les brouillons et publications apparaitront ici des qu'ils existent dans Supabase."
-        />
-      )}
+      <PostsTable
+        items={posts}
+        onRefresh={loadPosts}
+        manageMode
+        visibility={visibility}
+        onVisibilityChange={setVisibility}
+      />
     </div>
   );
 }
