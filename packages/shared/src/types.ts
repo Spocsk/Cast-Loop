@@ -1,11 +1,38 @@
 export const socialProviders = ["facebook", "instagram", "linkedin"] as const;
 export type SocialProvider = (typeof socialProviders)[number];
 
+export const socialAccountTypes = ["personal", "page", "business", "creator"] as const;
+export type SocialAccountType = (typeof socialAccountTypes)[number];
+
+export const socialAccountCapabilities = ["publishable", "connect_only"] as const;
+export type SocialAccountCapability = (typeof socialAccountCapabilities)[number];
+
+export const socialProviderConnectionVariants = [
+  "linkedin_personal",
+  "linkedin_page",
+  "facebook_page",
+  "instagram_professional",
+  "meta_personal"
+] as const;
+export type SocialProviderConnectionVariant = (typeof socialProviderConnectionVariants)[number];
+
 export const organizationRoles = ["owner", "manager", "editor"] as const;
 export type OrganizationRole = (typeof organizationRoles)[number];
 
 export const socialAccountStatuses = ["connected", "expired", "disconnected"] as const;
 export type SocialAccountStatus = (typeof socialAccountStatuses)[number];
+
+export const socialConnectionCallbackStatuses = [
+  "success",
+  "cancelled",
+  "provider_not_configured",
+  "invalid_state",
+  "oauth_error",
+  "no_eligible_account",
+  "selection_required",
+  "unknown_error"
+] as const;
+export type SocialConnectionCallbackStatus = (typeof socialConnectionCallbackStatuses)[number];
 
 export const postStates = ["draft", "scheduled", "publishing", "published", "failed", "cancelled"] as const;
 export type PostState = (typeof postStates)[number];
@@ -13,7 +40,7 @@ export type PostState = (typeof postStates)[number];
 export const postVisibilities = ["active", "archived"] as const;
 export type PostVisibility = (typeof postVisibilities)[number];
 
-export const postTargetStatuses = ["pending", "published", "failed", "cancelled"] as const;
+export const postTargetStatuses = ["pending", "published", "notified", "failed", "cancelled"] as const;
 export type PostTargetStatus = (typeof postTargetStatuses)[number];
 
 export interface AuthenticatedAppUser {
@@ -37,8 +64,29 @@ export interface SocialAccountSummary {
   provider: SocialProvider;
   displayName: string;
   handle: string;
+  accountType: SocialAccountType;
+  publishCapability: SocialAccountCapability;
   status: SocialAccountStatus;
   tokenExpiresAt: string | null;
+}
+
+export interface SocialProviderAvailability {
+  provider: SocialProvider;
+  variant: SocialProviderConnectionVariant;
+  label: string;
+  enabled: boolean;
+  capability: SocialAccountCapability;
+  reason: string | null;
+}
+
+export interface StartSocialConnectionInput {
+  variant: SocialProviderConnectionVariant;
+}
+
+export interface StartSocialConnectionResult {
+  provider: SocialProvider;
+  variant: SocialProviderConnectionVariant;
+  authorizationUrl: string;
 }
 
 export interface MediaAssetSummary {
@@ -60,6 +108,7 @@ export interface PostSummary {
   archivedAt: string | null;
   state: PostState;
   primaryMediaAssetId: string | null;
+  sendTelegramReminder: boolean;
   targetCount: number;
   targetSocialAccountIds: string[];
 }
@@ -71,6 +120,7 @@ export interface CreatePostInput {
   primaryMediaAssetId?: string;
   targetSocialAccountIds?: string[];
   scheduledAt?: string;
+  sendTelegramReminder?: boolean;
 }
 
 export interface CreatePostResult {
@@ -80,6 +130,7 @@ export interface CreatePostResult {
   content: string;
   scheduledAt: string | null;
   state: PostState;
+  sendTelegramReminder: boolean;
 }
 
 export interface UpdatePostInput {
@@ -89,6 +140,7 @@ export interface UpdatePostInput {
   primaryMediaAssetId?: string;
   targetSocialAccountIds?: string[];
   scheduledAt?: string;
+  sendTelegramReminder?: boolean;
 }
 
 export interface UpdatePostResult {
@@ -98,6 +150,7 @@ export interface UpdatePostResult {
   content: string;
   scheduledAt: string | null;
   state: PostState;
+  sendTelegramReminder: boolean;
 }
 
 export interface CreateMediaUploadUrlInput {

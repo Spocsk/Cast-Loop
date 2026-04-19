@@ -10,9 +10,12 @@ import {
   PostState,
   PostSummary,
   SocialAccountSummary,
+  SocialProviderAvailability,
+  StartSocialConnectionInput,
   MediaAssetSummary,
   AuthenticatedAppUser,
   OrganizationRole,
+  StartSocialConnectionResult,
   UpdatePostInput,
   UpdatePostResult
 } from "@cast-loop/shared";
@@ -41,6 +44,18 @@ export interface DashboardSnapshot {
     failed: number;
     connectedAccounts: number;
   };
+}
+
+export interface PendingSocialAccountSelection {
+  provider: "facebook" | "instagram" | "linkedin";
+  variant: string;
+  accounts: Array<{
+    externalAccountId: string;
+    displayName: string;
+    handle: string;
+    accountType: string;
+    publishCapability: string;
+  }>;
 }
 
 const buildApiUrl = (path: string, searchParams?: URLSearchParams) => {
@@ -141,6 +156,59 @@ export async function fetchSocialAccounts(accessToken: string, organizationId: s
   return apiRequest<SocialAccountSummary[]>(`/organizations/${organizationId}/social-accounts`, accessToken);
 }
 
+export async function fetchSocialProviderAvailability(accessToken: string, organizationId: string) {
+  return apiRequest<SocialProviderAvailability[]>(
+    `/organizations/${organizationId}/social-accounts/providers`,
+    accessToken
+  );
+}
+
+export async function startSocialConnection(
+  accessToken: string,
+  organizationId: string,
+  provider: "facebook" | "instagram" | "linkedin",
+  payload: StartSocialConnectionInput
+) {
+  return apiRequest<StartSocialConnectionResult>(
+    `/organizations/${organizationId}/social-accounts/${provider}/start`,
+    accessToken,
+    {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
+export async function fetchPendingSocialAccountSelection(
+  accessToken: string,
+  organizationId: string,
+  selectionToken: string
+) {
+  const searchParams = new URLSearchParams({ selectionToken });
+  return apiRequest<PendingSocialAccountSelection>(
+    `/organizations/${organizationId}/social-accounts/pending-selection`,
+    accessToken,
+    undefined,
+    searchParams
+  );
+}
+
+export async function completePendingSocialAccountSelection(
+  accessToken: string,
+  organizationId: string,
+  selectionToken: string,
+  externalAccountId: string
+) {
+  return apiRequest<SocialAccountSummary>(
+    `/organizations/${organizationId}/social-accounts/pending-selection/complete`,
+    accessToken,
+    {
+      method: "POST",
+      body: JSON.stringify({ selectionToken, externalAccountId })
+    }
+  );
+}
+
 export async function fetchMediaAssets(accessToken: string, organizationId: string) {
   const searchParams = new URLSearchParams({ organizationId });
   return apiRequest<MediaAssetSummary[]>("/media", accessToken, undefined, searchParams);
@@ -235,7 +303,9 @@ export async function getDashboardSnapshot(accessToken: string, organizationId: 
       scheduled: posts.filter((post) => post.state === "scheduled").length,
       drafts: posts.filter((post) => post.state === "draft").length,
       failed: posts.filter((post) => post.state === "failed").length,
-      connectedAccounts: socialAccounts.filter((account) => account.status === "connected").length
+      connectedAccounts: socialAccounts.filter(
+        (account) => account.status === "connected" && account.publishCapability === "publishable"
+      ).length
     }
   } satisfies DashboardSnapshot;
 }

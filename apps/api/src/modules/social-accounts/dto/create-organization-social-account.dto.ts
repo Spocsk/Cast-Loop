@@ -1,4 +1,4 @@
-import { SocialProvider } from "@cast-loop/shared";
+import { SocialAccountCapability, SocialAccountType, SocialProvider } from "@cast-loop/shared";
 import { IsIn, IsISO8601, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength } from "class-validator";
 
 export class CreateOrganizationSocialAccountDto {
@@ -14,6 +14,12 @@ export class CreateOrganizationSocialAccountDto {
   @IsNotEmpty()
   @MaxLength(120)
   handle!: string;
+
+  @IsIn(["personal", "page", "business", "creator"] satisfies SocialAccountType[])
+  accountType!: SocialAccountType;
+
+  @IsIn(["publishable", "connect_only"] satisfies SocialAccountCapability[])
+  publishCapability!: SocialAccountCapability;
 
   @IsString()
   @IsNotEmpty()

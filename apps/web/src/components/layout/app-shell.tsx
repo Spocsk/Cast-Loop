@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
@@ -50,8 +51,18 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className={`sidebar ${isMobileNavOpen ? "sidebar-open" : ""}`}>
         <div className="sidebar-mobile-bar">
           <div className="sidebar-brand">
-            <p className="brand-kicker">Cast Loop</p>
-            <h1>Cockpit de publication</h1>
+            <Image
+              src="/assets/cast-loop-logo-white.png"
+              alt="Logo Cast Loop"
+              width={768}
+              height={768}
+              className="brand-mark"
+              priority
+            />
+            <div className="sidebar-brand-copy">
+              <p className="brand-kicker">Cast Loop</p>
+              <h1>Cockpit de publication</h1>
+            </div>
           </div>
 
           <div className="sidebar-mobile-actions">

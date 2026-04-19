@@ -90,7 +90,40 @@ input {
 }
 
 .sidebar-brand {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.sidebar-brand-copy,
+.auth-brand {
+  display: grid;
+}
+
+.sidebar-brand-copy {
   gap: 0.15rem;
+}
+
+.brand-mark,
+.auth-brand-logo {
+  display: block;
+  height: auto;
+}
+
+.brand-mark {
+  width: 3rem;
+  flex: none;
+  border-radius: 0.75rem;
+}
+
+.auth-brand {
+  gap: 0.9rem;
+  justify-items: start;
+}
+
+.auth-brand-logo {
+  width: min(8rem, 100%);
+  border-radius: 1.5rem;
 }
 
 .sidebar-mobile-actions {
@@ -584,6 +617,67 @@ input {
   font-size: 0.9rem;
 }
 
+.social-feedback {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.social-feedback-success {
+  border-color: rgba(31, 143, 97, 0.2);
+  color: var(--success);
+  background: rgba(240, 251, 246, 0.9);
+}
+
+.social-feedback-warning {
+  border-color: rgba(157, 91, 0, 0.2);
+  color: var(--warning);
+  background: rgba(255, 247, 236, 0.92);
+}
+
+.social-feedback-danger {
+  border-color: rgba(182, 48, 48, 0.2);
+  color: var(--danger);
+  background: rgba(255, 245, 245, 0.92);
+}
+
+.social-provider-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.social-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+}
+
+.social-provider-card {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.social-provider-copy {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.social-provider-button {
+  justify-self: start;
+}
+
+.social-empty-state {
+  display: grid;
+  gap: 0.4rem;
+  padding: 1rem 0 0.25rem;
+}
+
 .post-row-actions {
   display: flex;
   justify-content: flex-end;
@@ -1057,6 +1151,14 @@ input {
     flex: 1;
   }
 
+  .sidebar-brand-copy {
+    min-width: 0;
+  }
+
+  .brand-mark {
+    width: 2.7rem;
+  }
+
   .brand-kicker {
     margin-bottom: 0;
     flex: none;
@@ -1219,6 +1321,10 @@ input {
 
   .sidebar {
     gap: 1rem;
+  }
+
+  .auth-brand-logo {
+    width: min(6.5rem, 100%);
   }
 
   .sidebar h1 {

@@ -76,6 +76,7 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
   const [scheduledAt, setScheduledAt] = useState("");
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [mediaAssetId, setMediaAssetId] = useState<string | null>(null);
+  const [sendTelegramReminder, setSendTelegramReminder] = useState(false);
   const [accounts, setAccounts] = useState<SocialAccountSummary[]>([]);
   const [existingMedia, setExistingMedia] = useState<MediaAssetSummary[]>([]);
   const [isLoadingLists, setIsLoadingLists] = useState(false);
@@ -107,6 +108,7 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
     setScheduledAt("");
     setSelectedAccountIds([]);
     setMediaAssetId(null);
+    setSendTelegramReminder(false);
     setUploadStatus("idle");
     setUploadError(null);
     setSubmitError(null);
@@ -124,6 +126,7 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
     setScheduledAt(post?.scheduledAt ? toDateTimeLocalValue(post.scheduledAt) : "");
     setSelectedAccountIds(post?.targetSocialAccountIds ?? []);
     setMediaAssetId(post?.primaryMediaAssetId ?? null);
+    setSendTelegramReminder(post?.sendTelegramReminder ?? false);
     setUploadStatus("idle");
     setUploadError(null);
     setSubmitError(null);
@@ -166,6 +169,17 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
       active = false;
     };
   }, [open, accessToken, activeOrganizationId]);
+
+  const selectedAccounts = accounts.filter((account) => selectedAccountIds.includes(account.id));
+  const selectedConnectOnlyAccounts = selectedAccounts.filter((account) => account.publishCapability === "connect_only");
+  const hasSelectedConnectOnlyAccounts = selectedConnectOnlyAccounts.length > 0;
+  const hasPublishableAccounts = accounts.some((account) => account.publishCapability === "publishable");
+
+  useEffect(() => {
+    if (!hasSelectedConnectOnlyAccounts && sendTelegramReminder) {
+      setSendTelegramReminder(false);
+    }
+  }, [hasSelectedConnectOnlyAccounts, sendTelegramReminder]);
 
   if (!open || !mounted) {
     return null;
@@ -230,6 +244,10 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
         setSubmitError("Tous les comptes cibles doivent etre connectes pour un post planifie.");
         return;
       }
+      if (hasSelectedConnectOnlyAccounts && !sendTelegramReminder) {
+        setSubmitError("Activez le rappel Telegram pour planifier un post avec des comptes en connexion seule.");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -240,7 +258,8 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
         content: content.trim(),
         primaryMediaAssetId: mediaAssetId ?? undefined,
         targetSocialAccountIds: selectedAccountIds.length > 0 ? selectedAccountIds : undefined,
-        scheduledAt: mode === "scheduled" ? new Date(scheduledAt).toISOString() : undefined
+        scheduledAt: mode === "scheduled" ? new Date(scheduledAt).toISOString() : undefined,
+        sendTelegramReminder
       };
 
       if (post) {
@@ -352,6 +371,10 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
                 ? "Aucun compte connecte. Connectez un compte dans Comptes sociaux avant de planifier."
                 : "Aucun compte social disponible."}
             </p>
+          ) : !hasPublishableAccounts ? (
+            <p className="muted">
+              Aucun compte publiable. Les comptes ci-dessous sont connectes a titre informatif; activez le rappel Telegram pour etre notifie au moment de publier manuellement.
+            </p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
               {accounts.map((account) => {
@@ -375,13 +398,33 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
                     disabled={disabled}
                   />
                   <span>
-                    {account.displayName} <em style={{ color: "var(--muted)" }}>({account.provider} · {account.status})</em>
+                    {account.displayName}{" "}
+                    <em style={{ color: "var(--muted)" }}>
+                      ({account.provider} · {accountLabel(account.accountType)} · {account.publishCapability === "publishable" ? "Publie" : "Connexion seule"} · {account.status})
+                    </em>
                   </span>
                 </label>
               )})}
             </div>
           )}
         </div>
+
+        {mode === "scheduled" && hasSelectedConnectOnlyAccounts ? (
+          <div style={fieldStyle}>
+            <span>Rappel manuel</span>
+            <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={sendTelegramReminder}
+                onChange={(event) => setSendTelegramReminder(event.target.checked)}
+              />
+              <span>Envoyer un rappel Telegram a l'heure planifiee</span>
+            </label>
+            <p className="muted">
+              Les comptes en connexion seule resteront visibles dans le post, mais Cast Loop vous rappellera de publier manuellement via Telegram.
+            </p>
+          </div>
+        ) : null}
 
         <div style={fieldStyle}>
           <span>Image (optionnelle)</span>
@@ -451,4 +494,19 @@ const toDateTimeLocalValue = (isoString: string) => {
   const timezoneOffset = date.getTimezoneOffset();
   const localDate = new Date(date.getTime() - timezoneOffset * 60_000);
   return localDate.toISOString().slice(0, 16);
+};
+
+const accountLabel = (accountType: SocialAccountSummary["accountType"]) => {
+  switch (accountType) {
+    case "personal":
+      return "Profil perso";
+    case "page":
+      return "Page";
+    case "business":
+      return "Business";
+    case "creator":
+      return "Creator";
+    default:
+      return accountType;
+  }
 };

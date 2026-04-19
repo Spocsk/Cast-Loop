@@ -98,7 +98,7 @@ export default function DashboardPage() {
   const connectedProviders = Array.from(
     new Set(
       snapshot.socialAccounts
-        .filter((account) => account.status === "connected")
+        .filter((account) => account.status === "connected" && account.publishCapability === "publishable")
         .map((account) => account.provider)
     )
   ) as SocialProvider[];
