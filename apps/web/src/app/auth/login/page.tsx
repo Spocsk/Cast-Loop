@@ -11,7 +11,15 @@ export default function LoginPage() {
             alt="Logo Cast Loop"
             width={768}
             height={768}
-            className="auth-brand-logo"
+            className="auth-brand-logo auth-brand-logo-light"
+            priority
+          />
+          <Image
+            src="/assets/cast-loop-logo-white.png"
+            alt="Logo Cast Loop"
+            width={768}
+            height={768}
+            className="auth-brand-logo auth-brand-logo-dark"
             priority
           />
         </div>

@@ -10,8 +10,21 @@ export class TelegramNotifierService {
   isConfigured() {
     return Boolean(
       this.configService.get("telegramBotToken", { infer: true }) &&
-        this.configService.get("telegramChatId", { infer: true })
+      this.configService.get("telegramChatId", { infer: true })
     );
+  }
+
+  async sendTestMessage(params: { organizationName: string; sentAt: string }) {
+    const message = [
+      "Test du canal Telegram Cast Loop",
+      "",
+      `Entreprise : ${params.organizationName}`,
+      `Heure : ${new Date(params.sentAt).toLocaleString("fr-FR")}`,
+      "",
+      "Le bot Telegram est bien joignable depuis l'application."
+    ].join("\n");
+
+    return this.sendTextMessage(message);
   }
 
   async sendReminder(params: {
@@ -31,7 +44,9 @@ export class TelegramNotifierService {
 
     const botToken = this.configService.get("telegramBotToken", { infer: true });
     const chatId = this.configService.get("telegramChatId", { infer: true });
-    const targetLines = params.targets.map((target) => `• ${target.provider} — ${target.displayName} (${target.handle})`);
+    const targetLines = params.targets.map(
+      (target) => `• ${target.provider} — ${target.displayName} (${target.handle})`
+    );
     const message = [
       `Rappel de publication manuelle`,
       ``,
@@ -75,6 +90,31 @@ export class TelegramNotifierService {
       body: JSON.stringify({
         chat_id: chatId,
         text: message
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    return response.json();
+  }
+
+  private async sendTextMessage(text: string) {
+    if (!this.isConfigured()) {
+      throw new Error("Telegram is not configured");
+    }
+
+    const botToken = this.configService.get("telegramBotToken", { infer: true });
+    const chatId = this.configService.get("telegramChatId", { infer: true });
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text
       })
     });
 

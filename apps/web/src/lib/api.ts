@@ -16,6 +16,8 @@ import {
   SocialProviderAvailability,
   StartSocialConnectionInput,
   MediaAssetSummary,
+  SendTelegramTestMessageInput,
+  SendTelegramTestMessageResult,
   StartSocialConnectionResult,
   UpdatePostInput,
   UpdatePostResult,
@@ -62,7 +64,12 @@ const buildApiUrl = (path: string, searchParams?: URLSearchParams) => {
   return url.toString();
 };
 
-async function apiRequest<T>(path: string, accessToken: string, init?: RequestInit, searchParams?: URLSearchParams): Promise<T> {
+async function apiRequest<T>(
+  path: string,
+  accessToken: string,
+  init?: RequestInit,
+  searchParams?: URLSearchParams
+): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Authorization", `Bearer ${accessToken}`);
 
@@ -104,14 +111,10 @@ async function apiRequest<T>(path: string, accessToken: string, init?: RequestIn
 }
 
 export async function validateAppSession(accessToken: string, organizationId?: string) {
-  return apiRequest<ValidatedSessionResult>(
-    "/auth/session/validate",
-    accessToken,
-    {
-      method: "POST",
-      body: JSON.stringify(organizationId ? { organizationId } : {})
-    }
-  );
+  return apiRequest<ValidatedSessionResult>("/auth/session/validate", accessToken, {
+    method: "POST",
+    body: JSON.stringify(organizationId ? { organizationId } : {})
+  });
 }
 
 export async function setActiveOrganization(accessToken: string, payload: SetActiveOrganizationInput) {
@@ -127,6 +130,13 @@ export async function fetchOrganizations(accessToken: string) {
 
 export async function createOrganization(accessToken: string, payload: CreateOrganizationInput) {
   return apiRequest<CreateOrganizationResult>("/organizations", accessToken, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function sendTelegramTestMessage(accessToken: string, payload: SendTelegramTestMessageInput) {
+  return apiRequest<SendTelegramTestMessageResult>("/settings/telegram/test-message", accessToken, {
     method: "POST",
     body: JSON.stringify(payload)
   });
@@ -167,11 +177,11 @@ export async function fetchCalendar(accessToken: string, organizationId: string,
     providers: Array.isArray(item.providers)
       ? item.providers
       : typeof item.providers === "string" && item.providers.length > 0
-        ? item.providers
+        ? (item.providers
             .replace(/^\{|\}$/g, "")
             .split(",")
             .map((provider: string) => provider.trim())
-            .filter(Boolean) as CalendarPostItem["providers"]
+            .filter(Boolean) as CalendarPostItem["providers"])
         : []
   }));
 }
@@ -240,7 +250,12 @@ export async function fetchMediaAssets(accessToken: string, organizationId: stri
 
 export async function fetchMediaAssetViewUrl(accessToken: string, organizationId: string, assetId: string) {
   const searchParams = new URLSearchParams({ organizationId });
-  return apiRequest<MediaAssetViewUrlResult>(`/media/${assetId}/view-url`, accessToken, undefined, searchParams);
+  return apiRequest<MediaAssetViewUrlResult>(
+    `/media/${assetId}/view-url`,
+    accessToken,
+    undefined,
+    searchParams
+  );
 }
 
 export async function createPost(accessToken: string, payload: CreatePostInput) {

@@ -81,6 +81,16 @@ export interface SetActiveOrganizationInput {
 
 export interface SetActiveOrganizationResult extends ValidatedSessionResult {}
 
+export interface SendTelegramTestMessageInput {
+  organizationId: string;
+}
+
+export interface SendTelegramTestMessageResult {
+  delivered: true;
+  channel: "telegram";
+  sentAt: string;
+}
+
 export interface SocialAccountSummary {
   id: string;
   organizationId: string;
