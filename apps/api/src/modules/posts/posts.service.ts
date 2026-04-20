@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { PostState } from "@cast-loop/shared";
+import { ConfigService } from "@nestjs/config";
+import { PostState, PostTargetStatus } from "@cast-loop/shared";
+import { AppEnv } from "../../config/env";
 import { DatabaseService } from "../../database/database.service";
 import { AuditService } from "../audit/audit.service";
 import { OrganizationsService } from "../organizations/organizations.service";
@@ -13,7 +15,8 @@ export class PostsService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly organizationsService: OrganizationsService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly configService: ConfigService<AppEnv, true>
   ) {}
 
   async list(userId: string, query: ListPostsDto) {
@@ -41,6 +44,7 @@ export class PostsService {
           p.archived_at as "archivedAt",
           p.state,
           p.primary_media_asset_id as "primaryMediaAssetId",
+          p.send_telegram_reminder as "sendTelegramReminder",
           count(pt.id)::int as "targetCount",
           coalesce(array_remove(array_agg(pt.social_account_id), null), '{}'::uuid[]) as "targetSocialAccountIds"
         from posts p
@@ -59,11 +63,7 @@ export class PostsService {
     const targetIds = [...new Set(dto.targetSocialAccountIds ?? [])];
 
     if (dto.scheduledAt) {
-      if (targetIds.length === 0) {
-        throw new BadRequestException("Au moins un compte cible est requis pour planifier un post");
-      }
-      await this.assertTargetAccounts(dto.organizationId, targetIds);
-      await this.assertTargetAccountsConnected(dto.organizationId, targetIds);
+      await this.assertScheduledTargets(dto.organizationId, targetIds, dto.sendTelegramReminder ?? false);
     } else if (targetIds.length > 0) {
       await this.assertTargetAccounts(dto.organizationId, targetIds);
     }
@@ -78,6 +78,7 @@ export class PostsService {
         content: string;
         scheduledAt: string | null;
         state: PostState;
+        sendTelegramReminder: boolean;
       }>(
         `
           insert into posts (
@@ -87,18 +88,29 @@ export class PostsService {
             content,
             primary_media_asset_id,
             scheduled_at,
-            state
+            state,
+            send_telegram_reminder
           )
-          values ($1, $2, $3, $4, $5, $6, $7)
+          values ($1, $2, $3, $4, $5, $6, $7, $8)
           returning
             id,
             organization_id as "organizationId",
             title,
             content,
             scheduled_at as "scheduledAt",
-            state
+            state,
+            send_telegram_reminder as "sendTelegramReminder"
         `,
-        [dto.organizationId, userId, dto.title, dto.content, dto.primaryMediaAssetId ?? null, dto.scheduledAt ?? null, state],
+        [
+          dto.organizationId,
+          userId,
+          dto.title,
+          dto.content,
+          dto.primaryMediaAssetId ?? null,
+          dto.scheduledAt ?? null,
+          state,
+          dto.sendTelegramReminder ?? false
+        ],
         client
       );
 
@@ -124,7 +136,8 @@ export class PostsService {
           action: "post.created",
           payload: {
             title: dto.title,
-            scheduledAt: dto.scheduledAt ?? null
+            scheduledAt: dto.scheduledAt ?? null,
+            sendTelegramReminder: dto.sendTelegramReminder ?? false
           }
         },
         client
@@ -141,11 +154,7 @@ export class PostsService {
     const targetIds = [...new Set(dto.targetSocialAccountIds ?? [])];
 
     if (dto.scheduledAt) {
-      if (targetIds.length === 0) {
-        throw new BadRequestException("Au moins un compte cible est requis pour planifier un post");
-      }
-      await this.assertTargetAccounts(dto.organizationId, targetIds);
-      await this.assertTargetAccountsConnected(dto.organizationId, targetIds);
+      await this.assertScheduledTargets(dto.organizationId, targetIds, dto.sendTelegramReminder ?? false);
     } else if (targetIds.length > 0) {
       await this.assertTargetAccounts(dto.organizationId, targetIds);
     }
@@ -160,6 +169,7 @@ export class PostsService {
         content: string;
         scheduledAt: string | null;
         state: PostState;
+        sendTelegramReminder: boolean;
       }>(
         `
           update posts
@@ -168,17 +178,28 @@ export class PostsService {
               primary_media_asset_id = $3,
               scheduled_at = $4,
               state = $5,
+              send_telegram_reminder = $6,
               updated_at = now()
-          where id = $6 and organization_id = $7
+          where id = $7 and organization_id = $8
           returning
             id,
             organization_id as "organizationId",
             title,
             content,
             scheduled_at as "scheduledAt",
-            state
+            state,
+            send_telegram_reminder as "sendTelegramReminder"
         `,
-        [dto.title, dto.content, dto.primaryMediaAssetId ?? null, dto.scheduledAt ?? null, state, postId, dto.organizationId],
+        [
+          dto.title,
+          dto.content,
+          dto.primaryMediaAssetId ?? null,
+          dto.scheduledAt ?? null,
+          state,
+          dto.sendTelegramReminder ?? false,
+          postId,
+          dto.organizationId
+        ],
         client
       );
 
@@ -207,7 +228,8 @@ export class PostsService {
           payload: {
             title: dto.title,
             scheduledAt: dto.scheduledAt ?? null,
-            targetCount: targetIds.length
+            targetCount: targetIds.length,
+            sendTelegramReminder: dto.sendTelegramReminder ?? false
           }
         },
         client
@@ -432,18 +454,24 @@ export class PostsService {
       organizationId: string;
       title: string;
       content: string;
+      scheduledAt: string | null;
+      sendTelegramReminder: boolean;
       primaryMediaAssetId: string | null;
       storageBucket: string | null;
       storagePath: string | null;
+      mimeType: string | null;
     }>(
       `
         select p.id,
                p.organization_id as "organizationId",
                p.title,
                p.content,
+               p.scheduled_at as "scheduledAt",
+               p.send_telegram_reminder as "sendTelegramReminder",
                p.primary_media_asset_id as "primaryMediaAssetId",
                ma.storage_bucket as "storageBucket",
-               ma.storage_path as "storagePath"
+               ma.storage_path as "storagePath",
+               ma.mime_type as "mimeType"
         from posts p
         left join media_assets ma on ma.id = p.primary_media_asset_id
         where p.id = $1
@@ -462,7 +490,9 @@ export class PostsService {
       displayName: string;
       handle: string;
       accessTokenEncrypted: string | null;
-      status: "pending" | "published" | "failed" | "cancelled";
+      publishCapability: "publishable" | "connect_only";
+      accountType: "personal" | "page" | "business" | "creator";
+      status: "pending" | "published" | "notified" | "failed" | "cancelled";
       metadata: Record<string, unknown> | null;
     }>(
       `
@@ -472,6 +502,8 @@ export class PostsService {
                sa.display_name as "displayName",
                sa.handle,
                sa.access_token_encrypted as "accessTokenEncrypted",
+               sa.publish_capability as "publishCapability",
+               sa.account_type as "accountType",
                pt.status,
                sa.metadata
         from post_targets pt
@@ -489,6 +521,7 @@ export class PostsService {
     results: Array<{
       postTargetId: string;
       success: boolean;
+      targetStatus: PostTargetStatus;
       externalPostId?: string;
       errorMessage?: string;
       responsePayload?: Record<string, unknown>;
@@ -519,7 +552,7 @@ export class PostsService {
           [
             result.postTargetId,
             index + 1,
-            result.success ? "published" : "failed",
+            result.targetStatus,
             result.externalPostId ?? null,
             result.errorMessage ?? null,
             result.responsePayload ?? {},
@@ -533,7 +566,7 @@ export class PostsService {
             set status = $2
             where id = $1
           `,
-          [result.postTargetId, result.success ? "published" : "failed"],
+          [result.postTargetId, result.targetStatus],
           client
         );
       }
@@ -560,13 +593,19 @@ export class PostsService {
     const [post] = await this.databaseService.query<{
       target_count: number;
       connected_target_count: number;
+      connect_only_target_count: number;
+      send_telegram_reminder: boolean;
     }>(
       `
         select count(pt.id)::int as target_count,
-               count(pt.id) filter (where sa.status = 'connected')::int as connected_target_count
+               count(pt.id) filter (where sa.status = 'connected')::int as connected_target_count,
+               count(pt.id) filter (where sa.publish_capability = 'connect_only')::int as connect_only_target_count,
+               p.send_telegram_reminder
         from post_targets pt
         inner join social_accounts sa on sa.id = pt.social_account_id
+        inner join posts p on p.id = pt.post_id
         where pt.post_id = $1
+        group by p.send_telegram_reminder
       `,
       [postId]
     );
@@ -577,6 +616,20 @@ export class PostsService {
 
     if (post.connected_target_count !== post.target_count) {
       throw new BadRequestException("All target accounts must be connected before scheduling");
+    }
+
+    if (post.connect_only_target_count > 0) {
+      if (!post.send_telegram_reminder) {
+        throw new BadRequestException(
+          "Activez le rappel Telegram pour planifier un post avec des comptes en connexion seule."
+        );
+      }
+
+      this.assertTelegramConfigured();
+    } else if (post.send_telegram_reminder) {
+      throw new BadRequestException(
+        "Le rappel Telegram ne peut etre active que si au moins un compte en connexion seule est selectionne."
+      );
     }
   }
 
@@ -612,6 +665,59 @@ export class PostsService {
     }
   }
 
+  private async assertScheduledTargets(
+    organizationId: string,
+    targetIds: string[],
+    sendTelegramReminder: boolean
+  ) {
+    if (targetIds.length === 0) {
+      throw new BadRequestException("Au moins un compte cible est requis pour planifier un post");
+    }
+
+    const accounts = await this.databaseService.query<{
+      id: string;
+      status: string;
+      publishCapability: "publishable" | "connect_only";
+    }>(
+      `
+        select
+          id,
+          status,
+          publish_capability as "publishCapability"
+        from social_accounts
+        where organization_id = $1
+          and id = any($2::uuid[])
+      `,
+      [organizationId, targetIds]
+    );
+
+    if (accounts.length !== targetIds.length) {
+      throw new BadRequestException("One or more target accounts are invalid for this organization");
+    }
+
+    if (accounts.some((account) => account.status !== "connected")) {
+      throw new BadRequestException("Tous les comptes cibles doivent etre connectes avant de planifier");
+    }
+
+    const hasConnectOnly = accounts.some((account) => account.publishCapability === "connect_only");
+
+    if (hasConnectOnly && !sendTelegramReminder) {
+      throw new BadRequestException(
+        "Activez le rappel Telegram pour planifier un post avec des comptes en connexion seule."
+      );
+    }
+
+    if (!hasConnectOnly && sendTelegramReminder) {
+      throw new BadRequestException(
+        "Le rappel Telegram ne peut etre active que si au moins un compte en connexion seule est selectionne."
+      );
+    }
+
+    if (hasConnectOnly) {
+      this.assertTelegramConfigured();
+    }
+  }
+
   private async assertPostEditable(postId: string, organizationId: string) {
     const post = await this.getPostRecord(postId, organizationId);
 
@@ -635,9 +741,14 @@ export class PostsService {
       id: string;
       state: PostState;
       archivedAt: string | null;
+      sendTelegramReminder: boolean;
     }>(
       `
-        select id, state, archived_at as "archivedAt"
+        select
+          id,
+          state,
+          archived_at as "archivedAt",
+          send_telegram_reminder as "sendTelegramReminder"
         from posts
         where id = $1 and organization_id = $2
       `,
@@ -653,5 +764,16 @@ export class PostsService {
 
   private async assertPostOwnership(postId: string, organizationId: string) {
     await this.getPostRecord(postId, organizationId);
+  }
+
+  private assertTelegramConfigured() {
+    if (
+      !this.configService.get("telegramBotToken", { infer: true }) ||
+      !this.configService.get("telegramChatId", { infer: true })
+    ) {
+      throw new BadRequestException(
+        "Le rappel Telegram est requis pour ces comptes mais n'est pas configure sur le serveur."
+      );
+    }
   }
 }

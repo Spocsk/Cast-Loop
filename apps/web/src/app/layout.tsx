@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { SessionProvider } from "@/components/providers/session-provider";
+import { ToastProvider } from "@/components/ui/toast-provider";
 import "./globals.css";
 
 const inter = Inter({
@@ -19,14 +20,21 @@ const jetbrains = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "Cast Loop",
-  description: "Pilotage editorial multi-tenant pour agences et marques."
+  description: "Pilotage editorial multi-tenant pour agences et marques.",
+  icons: {
+    icon: "/assets/cast-loop-logo.png",
+    shortcut: "/assets/cast-loop-logo.png",
+    apple: "/assets/cast-loop-logo.png"
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr">
       <body className={`${inter.variable} ${jetbrains.variable}`}>
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </SessionProvider>
       </body>
     </html>
   );

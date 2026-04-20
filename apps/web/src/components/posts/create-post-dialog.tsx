@@ -1,13 +1,26 @@
 "use client";
 
-import { MediaAssetSummary, PostSummary, SocialAccountSummary } from "@cast-loop/shared";
+import {
+  MediaAssetSummary,
+  PostSummary,
+  SocialAccountSummary,
+  SocialProvider
+} from "@cast-loop/shared";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSessionContext } from "@/components/providers/session-provider";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { Dropdown } from "@/components/ui/dropdown";
+import { EmptyState } from "@/components/ui/empty-state";
+import { CalendarIcon, ImageIcon, LinkIcon, UploadIcon } from "@/components/ui/icons";
+import { ProviderPill } from "@/components/ui/provider-pill";
+import { Spinner } from "@/components/ui/spinner";
+import { useToast } from "@/components/ui/toast-provider";
 import {
   createMediaUploadUrl,
   createPost,
   fetchMediaAssets,
+  fetchMediaAssetViewUrl,
   fetchSocialAccounts,
   updatePost,
   uploadImageToSignedUrl
@@ -21,61 +34,18 @@ interface CreatePostDialogProps {
 }
 
 type Mode = "draft" | "scheduled";
-
-const overlayStyle: React.CSSProperties = {
-  position: "fixed",
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  width: "100vw",
-  height: "100vh",
-  background: "rgba(26, 18, 11, 0.55)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "1rem",
-  zIndex: 1000
-};
-
-const dialogStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: "560px",
-  maxHeight: "calc(100vh - 2rem)",
-  overflow: "auto",
-  display: "flex",
-  flexDirection: "column",
-  gap: "1rem",
-  background: "var(--panel-strong)",
-  border: "1px solid var(--line-strong)",
-  borderRadius: "var(--radius-md)",
-  padding: "1.5rem",
-  boxShadow: "var(--shadow)"
-};
-
-const fieldStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.35rem",
-  fontSize: "0.9rem"
-};
-
-const inputStyle: React.CSSProperties = {
-  padding: "0.6rem 0.75rem",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--line-strong)",
-  background: "var(--panel-strong)",
-  color: "var(--ink)"
-};
+type FieldName = "title" | "content" | "scheduledAt" | "targetSocialAccountIds" | "sendTelegramReminder";
 
 export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDialogProps) {
   const { accessToken, activeOrganizationId } = useSessionContext();
+  const toast = useToast();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [mode, setMode] = useState<Mode>("draft");
   const [scheduledAt, setScheduledAt] = useState("");
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [mediaAssetId, setMediaAssetId] = useState<string | null>(null);
+  const [sendTelegramReminder, setSendTelegramReminder] = useState(false);
   const [accounts, setAccounts] = useState<SocialAccountSummary[]>([]);
   const [existingMedia, setExistingMedia] = useState<MediaAssetSummary[]>([]);
   const [isLoadingLists, setIsLoadingLists] = useState(false);
@@ -83,8 +53,14 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const uploadAbortRef = useRef<AbortController | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
+  const [touchedFields, setTouchedFields] = useState<Partial<Record<FieldName, boolean>>>({});
+  const [dragging, setDragging] = useState(false);
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewObjectUrlRef = useRef<string | null>(null);
   const isEditing = Boolean(post);
 
   useEffect(() => {
@@ -100,6 +76,23 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
     };
   }, [open]);
 
+  useEffect(
+    () => () => {
+      if (previewObjectUrlRef.current) {
+        URL.revokeObjectURL(previewObjectUrlRef.current);
+      }
+    },
+    []
+  );
+
+  const resetPreview = () => {
+    if (previewObjectUrlRef.current) {
+      URL.revokeObjectURL(previewObjectUrlRef.current);
+      previewObjectUrlRef.current = null;
+    }
+    setMediaPreviewUrl(null);
+  };
+
   const resetState = () => {
     setTitle("");
     setContent("");
@@ -107,10 +100,18 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
     setScheduledAt("");
     setSelectedAccountIds([]);
     setMediaAssetId(null);
+    setSendTelegramReminder(false);
     setUploadStatus("idle");
     setUploadError(null);
     setSubmitError(null);
     setIsSubmitting(false);
+    setFieldErrors({});
+    setTouchedFields({});
+    setDragging(false);
+    resetPreview();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   useEffect(() => {
@@ -124,10 +125,15 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
     setScheduledAt(post?.scheduledAt ? toDateTimeLocalValue(post.scheduledAt) : "");
     setSelectedAccountIds(post?.targetSocialAccountIds ?? []);
     setMediaAssetId(post?.primaryMediaAssetId ?? null);
+    setSendTelegramReminder(post?.sendTelegramReminder ?? false);
     setUploadStatus("idle");
     setUploadError(null);
     setSubmitError(null);
     setIsSubmitting(false);
+    setFieldErrors({});
+    setTouchedFields({});
+    setDragging(false);
+    resetPreview();
   }, [open, post]);
 
   const handleClose = () => {
@@ -167,9 +173,124 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
     };
   }, [open, accessToken, activeOrganizationId]);
 
+  useEffect(() => {
+    if (!mediaAssetId || !accessToken || !activeOrganizationId || previewObjectUrlRef.current) {
+      if (!mediaAssetId && !previewObjectUrlRef.current) {
+        setMediaPreviewUrl(null);
+      }
+      return;
+    }
+
+    let active = true;
+
+    void fetchMediaAssetViewUrl(accessToken, activeOrganizationId, mediaAssetId)
+      .then((result) => {
+        if (!active) return;
+        setMediaPreviewUrl(result.signedUrl);
+      })
+      .catch(() => {
+        if (!active) return;
+        setMediaPreviewUrl(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accessToken, activeOrganizationId, mediaAssetId]);
+
+  const selectedAccounts = accounts.filter((account) => selectedAccountIds.includes(account.id));
+  const selectedConnectOnlyAccounts = selectedAccounts.filter(
+    (account) => account.publishCapability === "connect_only"
+  );
+  const hasSelectedConnectOnlyAccounts = selectedConnectOnlyAccounts.length > 0;
+  const publishableAccounts = accounts.filter((account) => account.publishCapability === "publishable");
+  const distinctPreviewProviders = Array.from(
+    new Set(selectedAccounts.map((account) => account.provider))
+  ) as SocialProvider[];
+
+  useEffect(() => {
+    if (!hasSelectedConnectOnlyAccounts && sendTelegramReminder) {
+      setSendTelegramReminder(false);
+    }
+  }, [hasSelectedConnectOnlyAccounts, sendTelegramReminder]);
+
   if (!open || !mounted) {
     return null;
   }
+
+  const validateField = (
+    field: FieldName,
+    snapshot?: {
+      title?: string;
+      content?: string;
+      mode?: Mode;
+      scheduledAt?: string;
+      selectedAccountIds?: string[];
+      sendTelegramReminder?: boolean;
+    }
+  ) => {
+    const nextTitle = snapshot?.title ?? title;
+    const nextContent = snapshot?.content ?? content;
+    const nextMode = snapshot?.mode ?? mode;
+    const nextScheduledAt = snapshot?.scheduledAt ?? scheduledAt;
+    const nextAccountIds = snapshot?.selectedAccountIds ?? selectedAccountIds;
+    const nextReminder = snapshot?.sendTelegramReminder ?? sendTelegramReminder;
+    const nextSelectedAccounts = accounts.filter((account) => nextAccountIds.includes(account.id));
+    const nextConnectOnlyAccounts = nextSelectedAccounts.filter(
+      (account) => account.publishCapability === "connect_only"
+    );
+
+    switch (field) {
+      case "title":
+        return nextTitle.trim().length === 0 ? "Le titre est requis." : undefined;
+      case "content":
+        return nextContent.trim().length === 0 ? "Le contenu est requis." : undefined;
+      case "scheduledAt":
+        if (nextMode !== "scheduled") return undefined;
+        return nextScheduledAt ? undefined : "Choisis une date et une heure de publication.";
+      case "targetSocialAccountIds":
+        if (nextMode !== "scheduled") return undefined;
+        if (nextAccountIds.length === 0) {
+          return "Sélectionne au moins un compte connecté pour planifier.";
+        }
+        if (
+          nextAccountIds.some((accountId) => {
+            const account = accounts.find((item) => item.id === accountId);
+            return account?.status !== "connected";
+          })
+        ) {
+          return "Tous les comptes ciblés doivent être connectés pour un post planifié.";
+        }
+        return undefined;
+      case "sendTelegramReminder":
+        if (nextMode !== "scheduled" || nextConnectOnlyAccounts.length === 0) return undefined;
+        return nextReminder
+          ? undefined
+          : "Active le rappel Telegram pour planifier avec des comptes en connexion seule.";
+      default:
+        return undefined;
+    }
+  };
+
+  const validateForm = () => {
+    const nextErrors: Partial<Record<FieldName, string>> = {};
+    for (const field of ["title", "content", "scheduledAt", "targetSocialAccountIds", "sendTelegramReminder"] as FieldName[]) {
+      const error = validateField(field);
+      if (error) {
+        nextErrors[field] = error;
+      }
+    }
+    setFieldErrors(nextErrors);
+    return nextErrors;
+  };
+
+  const touchField = (field: FieldName, nextError?: string) => {
+    setTouchedFields((current) => ({ ...current, [field]: true }));
+    setFieldErrors((current) => ({
+      ...current,
+      [field]: nextError ?? validateField(field)
+    }));
+  };
 
   const handleFile = async (file: File) => {
     if (!accessToken || !activeOrganizationId) return;
@@ -178,6 +299,12 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
     setUploadStatus("uploading");
     uploadAbortRef.current?.abort();
     uploadAbortRef.current = new AbortController();
+
+    if (previewObjectUrlRef.current) {
+      URL.revokeObjectURL(previewObjectUrlRef.current);
+    }
+    previewObjectUrlRef.current = URL.createObjectURL(file);
+    setMediaPreviewUrl(previewObjectUrlRef.current);
 
     try {
       const uploadInfo = await createMediaUploadUrl(accessToken, {
@@ -196,9 +323,22 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
 
       setMediaAssetId(uploadInfo.assetId);
       setUploadStatus("done");
+      setExistingMedia(await fetchMediaAssets(accessToken, activeOrganizationId));
+      toast.success("L'image a été ajoutée au post.");
     } catch (error) {
       setUploadStatus("error");
-      setUploadError(error instanceof Error ? error.message : "Echec de l'upload");
+      const message = error instanceof Error ? error.message : "Échec de l'upload";
+      setUploadError(message);
+      toast.error(message);
+    }
+  };
+
+  const handleDrop = async (event: React.DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setDragging(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file) {
+      await handleFile(file);
     }
   };
 
@@ -207,29 +347,18 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
     if (!accessToken || !activeOrganizationId) return;
 
     setSubmitError(null);
+    const nextErrors = validateForm();
+    setTouchedFields({
+      title: true,
+      content: true,
+      scheduledAt: true,
+      targetSocialAccountIds: true,
+      sendTelegramReminder: true
+    });
 
-    if (title.trim().length === 0 || content.trim().length === 0) {
-      setSubmitError("Le titre et le contenu sont obligatoires.");
+    if (Object.keys(nextErrors).length > 0) {
+      setSubmitError("Corrige les champs signalés avant de continuer.");
       return;
-    }
-
-    if (mode === "scheduled") {
-      if (!scheduledAt) {
-        setSubmitError("Veuillez choisir une date et une heure de publication.");
-        return;
-      }
-      if (selectedAccountIds.length === 0) {
-        setSubmitError("Selectionnez au moins un compte connecte pour planifier.");
-        return;
-      }
-      const disconnectedTarget = selectedAccountIds.some((accountId) => {
-        const account = accounts.find((item) => item.id === accountId);
-        return account?.status !== "connected";
-      });
-      if (disconnectedTarget) {
-        setSubmitError("Tous les comptes cibles doivent etre connectes pour un post planifie.");
-        return;
-      }
     }
 
     setIsSubmitting(true);
@@ -240,34 +369,66 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
         content: content.trim(),
         primaryMediaAssetId: mediaAssetId ?? undefined,
         targetSocialAccountIds: selectedAccountIds.length > 0 ? selectedAccountIds : undefined,
-        scheduledAt: mode === "scheduled" ? new Date(scheduledAt).toISOString() : undefined
+        scheduledAt: mode === "scheduled" ? new Date(scheduledAt).toISOString() : undefined,
+        sendTelegramReminder
       };
 
       if (post) {
         await updatePost(accessToken, post.id, payload);
+        toast.success("Le post a été mis à jour.");
       } else {
         await createPost(accessToken, payload);
+        toast.success(mode === "scheduled" ? "Le post a été planifié." : "Le brouillon a été créé.");
       }
 
       onSaved();
       resetState();
       onClose();
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : isEditing ? "La mise a jour a echoue." : "La creation a echoue.");
+      const message =
+        error instanceof Error
+          ? error.message
+          : isEditing
+            ? "La mise à jour a échoué."
+            : "La création a échoué.";
+      setSubmitError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const toggleAccount = (id: string) => {
-    setSelectedAccountIds((current) =>
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
-    );
+    const nextValue = selectedAccountIds.includes(id)
+      ? selectedAccountIds.filter((value) => value !== id)
+      : [...selectedAccountIds, id];
+
+    setSelectedAccountIds(nextValue);
+
+    if (touchedFields.targetSocialAccountIds) {
+      setFieldErrors((current) => ({
+        ...current,
+        targetSocialAccountIds: validateField("targetSocialAccountIds", { selectedAccountIds: nextValue }),
+        sendTelegramReminder: validateField("sendTelegramReminder", {
+          selectedAccountIds: nextValue
+        })
+      }));
+    }
+  };
+
+  const removeMedia = () => {
+    setMediaAssetId(null);
+    setUploadStatus("idle");
+    setUploadError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    resetPreview();
   };
 
   return createPortal(
     <div
-      style={overlayStyle}
+      className="dialog-overlay"
       role="dialog"
       aria-modal="true"
       aria-labelledby="post-dialog-title"
@@ -275,170 +436,361 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
         if (event.target === event.currentTarget) handleClose();
       }}
     >
-      <form style={dialogStyle} onSubmit={handleSubmit}>
+      <form className="dialog-shell dialog-shell--xl create-post-dialog" onSubmit={handleSubmit}>
         <div className="section-heading">
           <div>
-            <span className="eyebrow">{isEditing ? "Edition du post" : "Nouveau post"}</span>
-            <h2 id="post-dialog-title">{isEditing ? "Modifier le post" : "Creer un post"}</h2>
+            <span className="eyebrow">{isEditing ? "Édition du post" : "Nouveau post"}</span>
+            <h2 id="post-dialog-title">{isEditing ? "Modifier le post" : "Créer un post"}</h2>
           </div>
-          <button type="button" className="secondary-button" onClick={handleClose}>
+          <button type="button" className="secondary-button secondary-button-action" onClick={handleClose}>
             Fermer
           </button>
         </div>
 
-        <label style={fieldStyle}>
-          <span>Titre</span>
-          <input
-            style={inputStyle}
-            type="text"
-            maxLength={120}
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            required
-          />
-        </label>
+        <div className="create-post-layout">
+          <div className="create-post-main">
+            <label className="form-field">
+              <span className="form-label-required">Titre</span>
+              <input
+                className="form-input"
+                type="text"
+                maxLength={120}
+                value={title}
+                aria-invalid={Boolean(touchedFields.title && fieldErrors.title)}
+                onChange={(event) => setTitle(event.target.value)}
+                onBlur={() => touchField("title")}
+              />
+              {touchedFields.title && fieldErrors.title ? <span className="form-field-error">{fieldErrors.title}</span> : null}
+            </label>
 
-        <label style={fieldStyle}>
-          <span>Contenu</span>
-          <textarea
-            style={{ ...inputStyle, minHeight: "120px", resize: "vertical" }}
-            maxLength={5000}
-            value={content}
-            onChange={(event) => setContent(event.target.value)}
-            required
-          />
-        </label>
+            <label className="form-field">
+              <span className="form-label-required">Contenu</span>
+              <textarea
+                className="form-input form-textarea"
+                maxLength={5000}
+                value={content}
+                aria-invalid={Boolean(touchedFields.content && fieldErrors.content)}
+                onChange={(event) => setContent(event.target.value)}
+                onBlur={() => touchField("content")}
+              />
+              {touchedFields.content && fieldErrors.content ? <span className="form-field-error">{fieldErrors.content}</span> : null}
+            </label>
 
-        <div style={fieldStyle}>
-          <span>Mode</span>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button
-              type="button"
-              className={mode === "draft" ? "primary-button" : "secondary-button"}
-              onClick={() => setMode("draft")}
-            >
-              Brouillon
-            </button>
-            <button
-              type="button"
-              className={mode === "scheduled" ? "primary-button" : "secondary-button"}
-              onClick={() => setMode("scheduled")}
-            >
-              Planifier
-            </button>
-          </div>
-        </div>
-
-        {mode === "scheduled" && (
-          <label style={fieldStyle}>
-            <span>Date de publication</span>
-            <input
-              style={inputStyle}
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(event) => setScheduledAt(event.target.value)}
-              required
-            />
-          </label>
-        )}
-
-        <div style={fieldStyle}>
-          <span>Comptes cibles {mode === "draft" && <em style={{ color: "var(--muted)" }}>(optionnel)</em>}</span>
-          {isLoadingLists ? (
-            <p className="muted">Chargement des comptes…</p>
-          ) : accounts.length === 0 ? (
-            <p className="muted">
-              {mode === "scheduled"
-                ? "Aucun compte connecte. Connectez un compte dans Comptes sociaux avant de planifier."
-                : "Aucun compte social disponible."}
-            </p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-              {accounts.map((account) => {
-                const selected = selectedAccountIds.includes(account.id);
-                const disabled = mode === "scheduled" && account.status !== "connected" && !selected;
-
-                return (
-                <label
-                  key={account.id}
-                  style={{
-                    display: "flex",
-                    gap: "0.5rem",
-                    alignItems: "center",
-                    opacity: disabled ? 0.55 : 1
+            <div className="form-field">
+              <span>Mode de publication</span>
+              <div className="segmented" role="tablist" aria-label="Choisir un mode de publication">
+                <button
+                  type="button"
+                  className="segmented-option"
+                  aria-selected={mode === "draft"}
+                  onClick={() => {
+                    setMode("draft");
+                    setFieldErrors((current) => ({
+                      ...current,
+                      scheduledAt: undefined,
+                      targetSocialAccountIds: undefined,
+                      sendTelegramReminder: undefined
+                    }));
                   }}
                 >
+                  Brouillon
+                </button>
+                <button
+                  type="button"
+                  className="segmented-option"
+                  aria-selected={mode === "scheduled"}
+                  onClick={() => setMode("scheduled")}
+                >
+                  Planifier
+                </button>
+              </div>
+              <p className="segmented-helper">
+                {mode === "draft"
+                  ? "Enregistre l'idée sans publication immédiate."
+                  : "Publication automatique à la date choisie sur les comptes sélectionnés."}
+              </p>
+            </div>
+
+            {mode === "scheduled" ? (
+              <div className="form-field">
+                <span className="form-label-required">Date de publication</span>
+                <DateTimePicker
+                  value={scheduledAt}
+                  onChange={(nextValue) => {
+                    setScheduledAt(nextValue);
+                    if (touchedFields.scheduledAt) {
+                      setFieldErrors((current) => ({
+                        ...current,
+                        scheduledAt: validateField("scheduledAt", { scheduledAt: nextValue })
+                      }));
+                    }
+                  }}
+                  label="Choisir une date et une heure de publication"
+                  invalid={Boolean(touchedFields.scheduledAt && fieldErrors.scheduledAt)}
+                />
+                {touchedFields.scheduledAt && fieldErrors.scheduledAt ? (
+                  <span className="form-field-error">{fieldErrors.scheduledAt}</span>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="form-field">
+              <span className={mode === "scheduled" ? "form-label-required" : undefined}>Comptes cibles</span>
+              {isLoadingLists ? (
+                <p className="muted">
+                  <Spinner size="sm" label="Chargement des comptes" /> Chargement des comptes…
+                </p>
+              ) : accounts.length === 0 ? (
+                <EmptyState
+                  icon={<LinkIcon />}
+                  title="Aucun compte social disponible"
+                  description={
+                    mode === "scheduled"
+                      ? "Connecte un compte dans Comptes sociaux avant de planifier une publication."
+                      : "Les comptes sociaux connectés apparaîtront ici pour cibler tes publications."
+                  }
+                />
+              ) : (
+                <div className="form-check-group">
+                  {accounts.map((account) => {
+                    const selected = selectedAccountIds.includes(account.id);
+                    const disabled = mode === "scheduled" && account.status !== "connected" && !selected;
+
+                    return (
+                      <label
+                        key={account.id}
+                        className="form-check"
+                        style={{ opacity: disabled ? 0.55 : 1 }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => toggleAccount(account.id)}
+                          disabled={disabled}
+                          onBlur={() => touchField("targetSocialAccountIds")}
+                        />
+                        <span>
+                          {account.displayName}{" "}
+                          <em className="muted">
+                            ({account.provider} · {accountLabel(account.accountType)} ·{" "}
+                            {account.publishCapability === "publishable" ? "Publie" : "Connexion seule"} · {account.status})
+                          </em>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              {touchedFields.targetSocialAccountIds && fieldErrors.targetSocialAccountIds ? (
+                <span className="form-field-error">{fieldErrors.targetSocialAccountIds}</span>
+              ) : null}
+              {accounts.length > 0 && publishableAccounts.length === 0 ? (
+                <p className="form-hint">
+                  Aucun compte publiable. Les comptes sélectionnés resteront visibles mais devront passer par un rappel Telegram.
+                </p>
+              ) : null}
+            </div>
+
+            {mode === "scheduled" && hasSelectedConnectOnlyAccounts ? (
+              <div className="form-field">
+                <span className="form-label-required">Rappel manuel</span>
+                <label className="form-check">
                   <input
                     type="checkbox"
-                    checked={selected}
-                    onChange={() => toggleAccount(account.id)}
-                    disabled={disabled}
+                    checked={sendTelegramReminder}
+                    onChange={(event) => {
+                      setSendTelegramReminder(event.target.checked);
+                      if (touchedFields.sendTelegramReminder) {
+                        setFieldErrors((current) => ({
+                          ...current,
+                          sendTelegramReminder: validateField("sendTelegramReminder", {
+                            sendTelegramReminder: event.target.checked
+                          })
+                        }));
+                      }
+                    }}
+                    onBlur={() => touchField("sendTelegramReminder")}
                   />
-                  <span>
-                    {account.displayName} <em style={{ color: "var(--muted)" }}>({account.provider} · {account.status})</em>
-                  </span>
+                  <span>Envoyer un rappel Telegram à l'heure planifiée</span>
                 </label>
-              )})}
+                <p className="form-hint">
+                  Les comptes en connexion seule resteront visibles dans le post, mais Cast Loop vous rappellera de publier manuellement via Telegram.
+                </p>
+                {touchedFields.sendTelegramReminder && fieldErrors.sendTelegramReminder ? (
+                  <span className="form-field-error">{fieldErrors.sendTelegramReminder}</span>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="form-field">
+              <span>Image</span>
+              <label
+                className="dropzone"
+                data-dragging={dragging}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragging(true);
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(event) => void handleDrop(event)}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      void handleFile(file);
+                    }
+                  }}
+                  disabled={uploadStatus === "uploading"}
+                />
+                <span className="dropzone-icon" aria-hidden="true">
+                  <UploadIcon />
+                </span>
+                <span className="dropzone-hint">
+                  <strong>Dépose une image ou clique pour en choisir une</strong>
+                  <span>PNG, JPG ou WebP · une image par post</span>
+                </span>
+              </label>
+
+              {mediaPreviewUrl ? (
+                <div className="dropzone-preview">
+                  <img src={mediaPreviewUrl} alt="Aperçu du média sélectionné" />
+                  <div className="dropzone-preview-meta">
+                    <strong>{selectedMediaLabel(existingMedia, mediaAssetId) ?? "Image sélectionnée"}</strong>
+                    <span>
+                      {uploadStatus === "uploading"
+                        ? "Upload en cours…"
+                        : uploadStatus === "done"
+                          ? "Image attachée au post"
+                          : "Image prête pour la prévisualisation"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="secondary-button secondary-button-action"
+                    onClick={removeMedia}
+                  >
+                    Retirer
+                  </button>
+                </div>
+              ) : null}
+
+              {uploadError ? <span className="form-field-error">{uploadError}</span> : null}
+
+              {existingMedia.length > 0 ? (
+                <Dropdown
+                  options={existingMedia.map((asset) => ({
+                    value: asset.id,
+                    label: asset.storagePath.split("/").at(-1) ?? asset.storagePath,
+                    hint: `${asset.mimeType} · ${formatFileSize(asset.fileSizeBytes)}`
+                  }))}
+                  value={mediaAssetId}
+                  onChange={(nextValue) => {
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = "";
+                    }
+                    if (previewObjectUrlRef.current) {
+                      URL.revokeObjectURL(previewObjectUrlRef.current);
+                      previewObjectUrlRef.current = null;
+                    }
+                    setUploadStatus("idle");
+                    setMediaAssetId(nextValue);
+                  }}
+                  label="Choisir un média existant"
+                  placeholder="Ou sélectionner un média existant"
+                />
+              ) : null}
+
+              {!mediaPreviewUrl && existingMedia.length === 0 && !isLoadingLists ? (
+                <EmptyState
+                  icon={<ImageIcon />}
+                  title="Aucun média disponible"
+                  description="Ajoute un premier visuel pour enrichir le post et alimenter la bibliothèque."
+                />
+              ) : null}
             </div>
-          )}
-        </div>
 
-        <div style={fieldStyle}>
-          <span>Image (optionnelle)</span>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void handleFile(file);
-            }}
-            disabled={uploadStatus === "uploading"}
-          />
-          {uploadStatus === "uploading" && <p className="muted">Upload en cours…</p>}
-          {uploadStatus === "done" && <p className="muted">Image attachee.</p>}
-          {uploadStatus === "error" && uploadError && (
-            <p style={{ color: "var(--danger)" }}>{uploadError}</p>
-          )}
-          {existingMedia.length === 0 && uploadStatus !== "done" && !isLoadingLists ? (
-            <p className="muted">Aucun media disponible pour cette organisation.</p>
-          ) : null}
-          {existingMedia.length > 0 && uploadStatus !== "done" && (
-            <select
-              style={inputStyle}
-              value={mediaAssetId ?? ""}
-              onChange={(event) => setMediaAssetId(event.target.value || null)}
-            >
-              <option value="">Ou choisir un media existant…</option>
-              {existingMedia.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.storagePath}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+            {submitError ? <p className="form-hint-error">{submitError}</p> : null}
 
-        {submitError && (
-          <p style={{ color: "var(--danger)", fontSize: "0.9rem" }}>{submitError}</p>
-        )}
+            <div className="dialog-actions">
+              <button type="button" className="secondary-button secondary-button-action" onClick={handleClose}>
+                Annuler
+              </button>
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={isSubmitting || uploadStatus === "uploading"}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Spinner size="sm" label="Enregistrement" />
+                    Enregistrement…
+                  </>
+                ) : isEditing ? (
+                  "Enregistrer"
+                ) : mode === "scheduled" ? (
+                  "Planifier"
+                ) : (
+                  "Créer le brouillon"
+                )}
+              </button>
+            </div>
+          </div>
 
-        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-          <button type="button" className="secondary-button" onClick={handleClose}>
-            Annuler
-          </button>
-          <button
-            type="submit"
-            className="primary-button"
-            disabled={isSubmitting || uploadStatus === "uploading"}
-          >
-            {isSubmitting
-              ? "Enregistrement…"
-              : isEditing
-                ? "Enregistrer"
-                : mode === "scheduled"
-                  ? "Planifier"
-                  : "Creer le brouillon"}
-          </button>
+          <aside className="create-post-sidebar">
+            <div className="create-post-preview">
+              <div className="create-post-preview-head">
+                <span className="eyebrow">Aperçu</span>
+                <div className="provider-stack">
+                  {distinctPreviewProviders.length > 0 ? (
+                    distinctPreviewProviders.map((provider) => (
+                      <ProviderPill key={provider} provider={provider} />
+                    ))
+                  ) : (
+                    <ProviderPill provider="linkedin" />
+                  )}
+                </div>
+              </div>
+
+              <div className="create-post-preview-card">
+                <div className="create-post-preview-meta">
+                  <strong>{title.trim() || "Titre du post"}</strong>
+                  <span>
+                    {mode === "scheduled" && scheduledAt
+                      ? `Publication prévue le ${formatPreviewDate(scheduledAt)}`
+                      : "Brouillon non planifié"}
+                  </span>
+                </div>
+
+                {mediaPreviewUrl ? (
+                  <img
+                    src={mediaPreviewUrl}
+                    alt="Aperçu du visuel du post"
+                    className="create-post-preview-image"
+                  />
+                ) : null}
+
+                <p className="create-post-preview-copy">
+                  {content.trim() || "Le texte du post apparaîtra ici pour vérifier le ton, la longueur et la hiérarchie du contenu avant publication."}
+                </p>
+
+                {hasSelectedConnectOnlyAccounts ? (
+                  <div className="create-post-preview-note">
+                    <CalendarIcon />
+                    <span>
+                      {sendTelegramReminder
+                        ? "Un rappel Telegram sera envoyé pour les comptes en connexion seule."
+                        : "Les comptes en connexion seule nécessitent un rappel Telegram."}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </aside>
         </div>
       </form>
     </div>,
@@ -448,7 +800,45 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
 
 const toDateTimeLocalValue = (isoString: string) => {
   const date = new Date(isoString);
-  const timezoneOffset = date.getTimezoneOffset();
-  const localDate = new Date(date.getTime() - timezoneOffset * 60_000);
-  return localDate.toISOString().slice(0, 16);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-") + `T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+};
+
+const accountLabel = (accountType: SocialAccountSummary["accountType"]) => {
+  switch (accountType) {
+    case "personal":
+      return "Profil perso";
+    case "page":
+      return "Page";
+    case "business":
+      return "Business";
+    case "creator":
+      return "Creator";
+    default:
+      return accountType;
+  }
+};
+
+const selectedMediaLabel = (existingMedia: MediaAssetSummary[], mediaAssetId: string | null) => {
+  if (!mediaAssetId) return null;
+  const asset = existingMedia.find((item) => item.id === mediaAssetId);
+  return asset?.storagePath.split("/").at(-1) ?? null;
+};
+
+const formatPreviewDate = (scheduledAt: string) =>
+  new Date(scheduledAt).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+
+const formatFileSize = (fileSizeBytes: number) => {
+  if (fileSizeBytes < 1024) return `${fileSizeBytes} B`;
+  if (fileSizeBytes < 1024 * 1024) return `${(fileSizeBytes / 1024).toFixed(1)} KB`;
+  return `${(fileSizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 };

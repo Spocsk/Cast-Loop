@@ -13,36 +13,6 @@ interface PostDetailsDialogProps {
   onClose: () => void;
 }
 
-const overlayStyle: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(26, 18, 11, 0.55)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "1rem",
-  zIndex: 1000
-};
-
-const dialogStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: "640px",
-  maxHeight: "calc(100vh - 2rem)",
-  overflow: "auto",
-  display: "grid",
-  gap: "1rem",
-  background: "var(--panel-strong)",
-  border: "1px solid var(--line-strong)",
-  borderRadius: "var(--radius-md)",
-  padding: "1.5rem",
-  boxShadow: "var(--shadow)"
-};
-
-const sectionStyle: React.CSSProperties = {
-  display: "grid",
-  gap: "0.6rem"
-};
-
 export function PostDetailsDialog({ open, post, onClose }: PostDetailsDialogProps) {
   const { accessToken, activeOrganizationId } = useSessionContext();
   const [mounted, setMounted] = useState(false);
@@ -139,7 +109,7 @@ export function PostDetailsDialog({ open, post, onClose }: PostDetailsDialogProp
 
   return createPortal(
     <div
-      style={overlayStyle}
+      className="dialog-overlay"
       role="dialog"
       aria-modal="true"
       aria-labelledby="post-details-title"
@@ -149,7 +119,7 @@ export function PostDetailsDialog({ open, post, onClose }: PostDetailsDialogProp
         }
       }}
     >
-      <div style={dialogStyle}>
+      <div className="dialog-shell dialog-shell--lg">
         <div className="section-heading">
           <div>
             <span className="eyebrow">Details du post</span>
@@ -161,7 +131,7 @@ export function PostDetailsDialog({ open, post, onClose }: PostDetailsDialogProp
         </div>
 
         <div className="posts-details-grid">
-          <section style={sectionStyle}>
+          <section className="dialog-section">
             <span className="eyebrow">Statut</span>
             <div className="posts-details-status-row">
               <span className={`status status-${post.state}`}>{post.state}</span>
@@ -169,12 +139,12 @@ export function PostDetailsDialog({ open, post, onClose }: PostDetailsDialogProp
             </div>
           </section>
 
-          <section style={sectionStyle}>
+          <section className="dialog-section">
             <span className="eyebrow">Contenu</span>
             <p className="posts-details-copy">{post.content}</p>
           </section>
 
-          <section style={sectionStyle}>
+          <section className="dialog-section">
             <span className="eyebrow">Comptes cibles</span>
             {targetAccounts.length > 0 ? (
               <div className="posts-details-targets">
@@ -193,7 +163,7 @@ export function PostDetailsDialog({ open, post, onClose }: PostDetailsDialogProp
             )}
           </section>
 
-          <section style={sectionStyle}>
+          <section className="dialog-section">
             <span className="eyebrow">Image</span>
             {mediaAsset ? (
               <div className="posts-details-media">

@@ -1,4 +1,4 @@
-import { IsArray, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
+import { IsArray, IsBoolean, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
 
 export class CreatePostDto {
   @IsUUID()
@@ -25,4 +25,8 @@ export class CreatePostDto {
   @IsOptional()
   @IsISO8601()
   scheduledAt?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  sendTelegramReminder?: boolean;
 }

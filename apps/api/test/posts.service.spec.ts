@@ -12,21 +12,29 @@ const buildService = (queryImpl: (sql: string, params?: unknown[]) => unknown[] 
   const transaction = jest.fn(async (callback: (client: unknown) => Promise<unknown>) => callback({}));
   const organizationsService = { assertMembership: jest.fn() };
   const auditService = { record: jest.fn() };
+  const configService = {
+    get: jest.fn((key: string) => {
+      if (key === "telegramBotToken") return "bot";
+      if (key === "telegramChatId") return "chat";
+      return "";
+    })
+  };
 
   const service = new PostsService(
     { query, transaction } as never,
     organizationsService as never,
-    auditService as never
+    auditService as never,
+    configService as never
   );
 
-  return { service, query, transaction, organizationsService, auditService };
+  return { service, query, transaction, organizationsService, auditService, configService };
 };
 
 describe("PostsService.create", () => {
   it("creates a draft without any targets", async () => {
     const { service } = buildService((sql) => {
       if (sql.includes("insert into posts")) {
-        return [{ id: "post-1", state: "draft" }];
+        return [{ id: "post-1", state: "draft", sendTelegramReminder: false }];
       }
       return [];
     });
@@ -46,7 +54,7 @@ describe("PostsService.create", () => {
         return [{ id: ACCOUNT_ID, status: "expired" }];
       }
       if (sql.includes("insert into posts")) {
-        return [{ id: "post-1", state: "draft" }];
+        return [{ id: "post-1", state: "draft", sendTelegramReminder: false }];
       }
       return [];
     });
@@ -78,7 +86,7 @@ describe("PostsService.create", () => {
   it("rejects a scheduled post when a target is not connected", async () => {
     const { service } = buildService((sql) => {
       if (sql.includes("from social_accounts")) {
-        return [{ id: ACCOUNT_ID, status: "expired" }];
+        return [{ id: ACCOUNT_ID, status: "expired", publishCapability: "publishable" }];
       }
       return [];
     });
@@ -97,10 +105,10 @@ describe("PostsService.create", () => {
   it("creates a scheduled post when all targets are connected", async () => {
     const { service } = buildService((sql) => {
       if (sql.includes("from social_accounts")) {
-        return [{ id: ACCOUNT_ID, status: "connected" }];
+        return [{ id: ACCOUNT_ID, status: "connected", publishCapability: "publishable" }];
       }
       if (sql.includes("insert into posts")) {
-        return [{ id: "post-1", state: "scheduled" }];
+        return [{ id: "post-1", state: "scheduled", sendTelegramReminder: false }];
       }
       return [];
     });
@@ -120,11 +128,11 @@ describe("PostsService.create", () => {
 describe("PostsService.update", () => {
   it("updates a draft without any targets", async () => {
     const { service } = buildService((sql) => {
-      if (sql.includes('select id, state, archived_at as "archivedAt"')) {
+      if (sql.includes('send_telegram_reminder as "sendTelegramReminder"')) {
         return [{ id: POST_ID, state: "draft", archivedAt: null }];
       }
       if (sql.includes("update posts") && sql.includes("set title =")) {
-        return [{ id: POST_ID, state: "draft" }];
+        return [{ id: POST_ID, state: "draft", sendTelegramReminder: false }];
       }
       return [];
     });
@@ -140,14 +148,14 @@ describe("PostsService.update", () => {
 
   it("updates a scheduled post when all targets are connected", async () => {
     const { service } = buildService((sql) => {
-      if (sql.includes('select id, state, archived_at as "archivedAt"')) {
+      if (sql.includes('send_telegram_reminder as "sendTelegramReminder"')) {
         return [{ id: POST_ID, state: "scheduled", archivedAt: null }];
       }
       if (sql.includes("from social_accounts")) {
-        return [{ id: ACCOUNT_ID, status: "connected" }];
+        return [{ id: ACCOUNT_ID, status: "connected", publishCapability: "publishable" }];
       }
       if (sql.includes("update posts") && sql.includes("set title =")) {
-        return [{ id: POST_ID, state: "scheduled" }];
+        return [{ id: POST_ID, state: "scheduled", sendTelegramReminder: false }];
       }
       return [];
     });
@@ -165,7 +173,7 @@ describe("PostsService.update", () => {
 
   it("rejects a scheduled update with no targets", async () => {
     const { service } = buildService((sql) => {
-      if (sql.includes('select id, state, archived_at as "archivedAt"')) {
+      if (sql.includes('send_telegram_reminder as "sendTelegramReminder"')) {
         return [{ id: POST_ID, state: "scheduled", archivedAt: null }];
       }
       return [];
@@ -184,11 +192,11 @@ describe("PostsService.update", () => {
 
   it("rejects a scheduled update when a target is not connected", async () => {
     const { service } = buildService((sql) => {
-      if (sql.includes('select id, state, archived_at as "archivedAt"')) {
+      if (sql.includes('send_telegram_reminder as "sendTelegramReminder"')) {
         return [{ id: POST_ID, state: "scheduled", archivedAt: null }];
       }
       if (sql.includes("from social_accounts")) {
-        return [{ id: ACCOUNT_ID, status: "expired" }];
+        return [{ id: ACCOUNT_ID, status: "expired", publishCapability: "publishable" }];
       }
       return [];
     });
@@ -208,7 +216,7 @@ describe("PostsService.update", () => {
 describe("PostsService.archive lifecycle", () => {
   it("archives a draft post", async () => {
     const { service } = buildService((sql) => {
-      if (sql.includes('select id, state, archived_at as "archivedAt"')) {
+      if (sql.includes('send_telegram_reminder as "sendTelegramReminder"')) {
         return [{ id: POST_ID, state: "draft", archivedAt: null }];
       }
       if (sql.includes('returning id, archived_at as "archivedAt"')) {
@@ -223,7 +231,7 @@ describe("PostsService.archive lifecycle", () => {
 
   it("archives a scheduled post", async () => {
     const { service } = buildService((sql) => {
-      if (sql.includes('select id, state, archived_at as "archivedAt"')) {
+      if (sql.includes('send_telegram_reminder as "sendTelegramReminder"')) {
         return [{ id: POST_ID, state: "scheduled", archivedAt: null }];
       }
       if (sql.includes('returning id, archived_at as "archivedAt"')) {
@@ -238,7 +246,7 @@ describe("PostsService.archive lifecycle", () => {
 
   it("restores an archived post", async () => {
     const { service } = buildService((sql) => {
-      if (sql.includes('select id, state, archived_at as "archivedAt"')) {
+      if (sql.includes('send_telegram_reminder as "sendTelegramReminder"')) {
         return [{ id: POST_ID, state: "draft", archivedAt: "2030-01-01T10:00:00.000Z" }];
       }
       if (sql.includes("set archived_at = null")) {
@@ -253,7 +261,7 @@ describe("PostsService.archive lifecycle", () => {
 
   it("deletes an archived post definitively", async () => {
     const { service } = buildService((sql) => {
-      if (sql.includes('select id, state, archived_at as "archivedAt"')) {
+      if (sql.includes('send_telegram_reminder as "sendTelegramReminder"')) {
         return [{ id: POST_ID, state: "draft", archivedAt: "2030-01-01T10:00:00.000Z" }];
       }
       return [];
@@ -267,13 +275,59 @@ describe("PostsService.archive lifecycle", () => {
 
   it("rejects definitive deletion when the post is not archived", async () => {
     const { service } = buildService((sql) => {
-      if (sql.includes('select id, state, archived_at as "archivedAt"')) {
+      if (sql.includes('send_telegram_reminder as "sendTelegramReminder"')) {
         return [{ id: POST_ID, state: "draft", archivedAt: null }];
       }
       return [];
     });
 
     await expect(service.deleteArchived("user-1", POST_ID, ORG_ID)).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe("PostsService.connect_only scheduling", () => {
+  it("rejects scheduling connect_only targets without telegram reminder", async () => {
+    const { service } = buildService((sql) => {
+      if (sql.includes("publish_capability as \"publishCapability\"")) {
+        return [{ id: ACCOUNT_ID, status: "connected", publishCapability: "connect_only" }];
+      }
+      return [];
+    });
+
+    await expect(
+      service.create("user-1", {
+        organizationId: ORG_ID,
+        title: "Scheduled",
+        content: "body",
+        targetSocialAccountIds: [ACCOUNT_ID],
+        scheduledAt: "2030-01-01T10:00:00.000Z",
+        sendTelegramReminder: false
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("accepts scheduling connect_only targets with telegram reminder", async () => {
+    const { service } = buildService((sql) => {
+      if (sql.includes("publish_capability as \"publishCapability\"")) {
+        return [{ id: ACCOUNT_ID, status: "connected", publishCapability: "connect_only" }];
+      }
+      if (sql.includes("insert into posts")) {
+        return [{ id: "post-1", state: "scheduled", sendTelegramReminder: true }];
+      }
+      return [];
+    });
+
+    const result = await service.create("user-1", {
+      organizationId: ORG_ID,
+      title: "Scheduled",
+      content: "body",
+      targetSocialAccountIds: [ACCOUNT_ID],
+      scheduledAt: "2030-01-01T10:00:00.000Z",
+      sendTelegramReminder: true
+    });
+
+    expect(result.state).toBe("scheduled");
+    expect(result.sendTelegramReminder).toBe(true);
   });
 });
 

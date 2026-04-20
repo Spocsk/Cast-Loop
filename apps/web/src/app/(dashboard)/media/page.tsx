@@ -1,9 +1,13 @@
 "use client";
 
 import { MediaAssetSummary } from "@cast-loop/shared";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSessionContext } from "@/components/providers/session-provider";
 import { DataState } from "@/components/ui/data-state";
+import { EmptyState } from "@/components/ui/empty-state";
+import { GridIcon, ImageIcon, ListIcon } from "@/components/ui/icons";
+import { OrganizationScope } from "@/components/ui/organization-scope";
 import { fetchMediaAssets, fetchMediaAssetViewUrl } from "@/lib/api";
 
 type MediaViewMode = "grid" | "list";
@@ -94,6 +98,7 @@ export default function MediaPage() {
         eyebrow="Medias"
         title="Chargement de la bibliotheque"
         description="Recuperation des assets enregistres dans Supabase."
+        loading
       />
     );
   }
@@ -114,11 +119,25 @@ export default function MediaPage() {
 
   if (assets.length === 0) {
     return (
-      <DataState
-        eyebrow="Medias"
-        title="Aucun media importe"
-        description="Les images uploadees dans Supabase apparaitront ici avec leurs metadonnees."
-      />
+      <div className="page-stack media-page">
+        <header className="page-header">
+          <span className="eyebrow">Médias</span>
+          <h2>Bibliothèque</h2>
+          <OrganizationScope />
+        </header>
+        <section className="panel">
+          <EmptyState
+            icon={<ImageIcon />}
+            title="Aucun média importé"
+            description="Les images de ton organisation apparaîtront ici dès qu'un post aura un visuel attaché."
+            actions={
+              <Link href="/posts" className="secondary-button secondary-button-action">
+                Créer un brouillon
+              </Link>
+            }
+          />
+        </section>
+      </div>
     );
   }
 
@@ -128,16 +147,29 @@ export default function MediaPage() {
         <div>
           <span className="eyebrow">Medias</span>
           <h2>Bibliotheque</h2>
+          <OrganizationScope />
         </div>
 
-        <button
-          type="button"
-          className="media-view-toggle"
-          onClick={() => setViewMode((current) => (current === "grid" ? "list" : "grid"))}
-          aria-pressed={viewMode === "list"}
-        >
-          {viewMode === "grid" ? "Vue liste" : "Vue grille"}
-        </button>
+        <div className="media-view-toggle-group" role="tablist" aria-label="Changer la vue des médias">
+          <button
+            type="button"
+            className="media-view-toggle-option"
+            aria-selected={viewMode === "grid"}
+            onClick={() => setViewMode("grid")}
+          >
+            <GridIcon />
+            Grille
+          </button>
+          <button
+            type="button"
+            className="media-view-toggle-option"
+            aria-selected={viewMode === "list"}
+            onClick={() => setViewMode("list")}
+          >
+            <ListIcon />
+            Liste
+          </button>
+        </div>
       </header>
 
       <section

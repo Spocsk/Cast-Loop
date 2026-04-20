@@ -1,14 +1,18 @@
+import clsx from "clsx";
+
 export function StatCard({
   label,
   value,
-  hint
+  hint,
+  className
 }: {
   label: string;
   value: string | number;
   hint: string;
+  className?: string;
 }) {
   return (
-    <article className="panel stat-card">
+    <article className={clsx("panel stat-card", className)}>
       <span className="eyebrow">{label}</span>
       <strong>{value}</strong>
       <p>{hint}</p>

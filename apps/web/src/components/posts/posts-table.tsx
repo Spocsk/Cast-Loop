@@ -1,8 +1,13 @@
 "use client";
 
 import { PostSummary, PostVisibility } from "@cast-loop/shared";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSessionContext } from "@/components/providers/session-provider";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { InboxIcon } from "@/components/ui/icons";
+import { Spinner } from "@/components/ui/spinner";
+import { useToast } from "@/components/ui/toast-provider";
 import { archivePost, deletePost, restorePost } from "@/lib/api";
 import { CreatePostDialog } from "./create-post-dialog";
 import { PostDetailsDialog } from "./post-details-dialog";
@@ -13,6 +18,9 @@ interface PostsTableProps {
   manageMode?: boolean;
   visibility?: PostVisibility;
   onVisibilityChange?: (visibility: PostVisibility) => void;
+  selectedPostId?: string | null;
+  onPostDetailsOpen?: (postId: string) => void;
+  onPostDetailsClose?: () => void;
 }
 
 export function PostsTable({
@@ -20,14 +28,22 @@ export function PostsTable({
   onRefresh,
   manageMode = false,
   visibility = "active",
-  onVisibilityChange
+  onVisibilityChange,
+  selectedPostId = null,
+  onPostDetailsOpen,
+  onPostDetailsClose
 }: PostsTableProps) {
   const { accessToken, activeOrganizationId } = useSessionContext();
+  const toast = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<PostSummary | null>(null);
   const [selectedPost, setSelectedPost] = useState<PostSummary | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingPostId, setPendingPostId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{
+    kind: "archive" | "delete";
+    postId: string;
+  } | null>(null);
 
   const openCreateDialog = () => {
     setEditingPost(null);
@@ -48,11 +64,26 @@ export function PostsTable({
 
   const openPostDetails = (post: PostSummary) => {
     setSelectedPost(post);
+    onPostDetailsOpen?.(post.id);
   };
 
   const closePostDetails = () => {
     setSelectedPost(null);
+    onPostDetailsClose?.();
   };
+
+  useEffect(() => {
+    if (!selectedPostId) {
+      setSelectedPost(null);
+      return;
+    }
+
+    const post = items.find((item) => item.id === selectedPostId) ?? null;
+
+    if (post) {
+      setSelectedPost(post);
+    }
+  }, [items, selectedPostId]);
 
   const runMutation = async (postId: string, mutation: () => Promise<void>) => {
     setActionError(null);
@@ -61,8 +92,10 @@ export function PostsTable({
     try {
       await mutation();
       await onRefresh?.();
+      return true;
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Action impossible sur ce post.");
+      return false;
     } finally {
       setPendingPostId(null);
     }
@@ -70,27 +103,43 @@ export function PostsTable({
 
   const handleArchive = async (postId: string) => {
     if (!accessToken || !activeOrganizationId) return;
-    await runMutation(postId, async () => {
+    const success = await runMutation(postId, async () => {
       await archivePost(accessToken, postId, activeOrganizationId);
     });
+    if (success) {
+      toast.success("Le post a été archivé.");
+    }
   };
 
   const handleRestore = async (postId: string) => {
     if (!accessToken || !activeOrganizationId) return;
-    await runMutation(postId, async () => {
+    const success = await runMutation(postId, async () => {
       await restorePost(accessToken, postId, activeOrganizationId);
     });
+    if (success) {
+      toast.success("Le post a été restauré.");
+    }
   };
 
   const handleDelete = async (postId: string) => {
     if (!accessToken || !activeOrganizationId) return;
-    if (!window.confirm("Supprimer definitivement ce post archive ?")) {
-      return;
-    }
-
-    await runMutation(postId, async () => {
+    const success = await runMutation(postId, async () => {
       await deletePost(accessToken, postId, activeOrganizationId);
     });
+    if (success) {
+      toast.success("Le post a été supprimé.");
+    }
+  };
+
+  const runConfirmedAction = async () => {
+    if (!confirm) return;
+    const { kind, postId } = confirm;
+    setConfirm(null);
+    if (kind === "archive") {
+      await handleArchive(postId);
+    } else {
+      await handleDelete(postId);
+    }
   };
 
   return (
@@ -98,7 +147,7 @@ export function PostsTable({
       <div className="section-heading">
         <div>
           <span className="eyebrow">Posts</span>
-          <h2>Pipeline editorial</h2>
+          <h2>Pipeline éditorial</h2>
         </div>
         <button
           className="secondary-button secondary-button-action"
@@ -184,11 +233,18 @@ export function PostsTable({
                         className="post-row-button post-row-button-danger"
                         onClick={(event) => {
                           event.stopPropagation();
-                          void handleArchive(post.id);
+                          setConfirm({ kind: "archive", postId: post.id });
                         }}
                         disabled={pendingPostId === post.id || !isMutable(post)}
                       >
-                        {pendingPostId === post.id ? "Archivage…" : "Archiver"}
+                        {pendingPostId === post.id ? (
+                          <>
+                            <Spinner size="sm" label="Archivage" />
+                            Archivage…
+                          </>
+                        ) : (
+                          "Archiver"
+                        )}
                       </button>
                     </>
                   ) : (
@@ -202,18 +258,32 @@ export function PostsTable({
                         }}
                         disabled={pendingPostId === post.id}
                       >
-                        {pendingPostId === post.id ? "Restauration…" : "Restaurer"}
+                        {pendingPostId === post.id ? (
+                          <>
+                            <Spinner size="sm" label="Restauration" />
+                            Restauration…
+                          </>
+                        ) : (
+                          "Restaurer"
+                        )}
                       </button>
                       <button
                         type="button"
                         className="post-row-button post-row-button-danger"
                         onClick={(event) => {
                           event.stopPropagation();
-                          void handleDelete(post.id);
+                          setConfirm({ kind: "delete", postId: post.id });
                         }}
                         disabled={pendingPostId === post.id}
                       >
-                        {pendingPostId === post.id ? "Suppression…" : "Supprimer"}
+                        {pendingPostId === post.id ? (
+                          <>
+                            <Spinner size="sm" label="Suppression" />
+                            Suppression…
+                          </>
+                        ) : (
+                          "Supprimer"
+                        )}
                       </button>
                     </>
                   )}
@@ -222,16 +292,26 @@ export function PostsTable({
             </article>
           ))
         ) : (
-          <div className="table-row">
-            <div>
-              <strong>{visibility === "archived" ? "Aucun post archive" : "Aucun post disponible"}</strong>
-              <p>
-                {visibility === "archived"
-                  ? "Les posts archives apparaitront ici pour etre restaures ou supprimes."
-                  : "Creer un brouillon remplira automatiquement cette liste."}
-              </p>
-            </div>
-          </div>
+          <EmptyState
+            icon={<InboxIcon />}
+            title={visibility === "archived" ? "Aucun post archivé" : "Aucun post disponible"}
+            description={
+              visibility === "archived"
+                ? "Les posts archivés apparaîtront ici pour être restaurés ou supprimés."
+                : "Crée ton premier brouillon pour commencer à remplir le pipeline éditorial."
+            }
+            actions={
+              visibility === "active" ? (
+                <button
+                  type="button"
+                  className="secondary-button secondary-button-action"
+                  onClick={openCreateDialog}
+                >
+                  Nouveau brouillon
+                </button>
+              ) : undefined
+            }
+          />
         )}
       </div>
 
@@ -245,6 +325,20 @@ export function PostsTable({
       />
 
       <PostDetailsDialog open={selectedPost !== null} post={selectedPost} onClose={closePostDetails} />
+      <ConfirmDialog
+        open={confirm !== null}
+        title={confirm?.kind === "delete" ? "Supprimer ce post ?" : "Archiver ce post ?"}
+        description={
+          confirm?.kind === "delete"
+            ? "Cette suppression est définitive et retirera le post de l'organisation active."
+            : "Le post sera retiré de la vue active mais pourra encore être restauré plus tard."
+        }
+        tone={confirm?.kind === "delete" ? "danger" : "default"}
+        confirmLabel={confirm?.kind === "delete" ? "Supprimer" : "Archiver"}
+        busy={Boolean(confirm?.postId && pendingPostId === confirm.postId)}
+        onCancel={() => setConfirm(null)}
+        onConfirm={runConfirmedAction}
+      />
     </div>
   );
 }

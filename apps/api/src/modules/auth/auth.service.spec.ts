@@ -33,7 +33,8 @@ describe("AuthService", () => {
       auth_user_id: "auth-1",
       email: "alice@example.com",
       full_name: "Alice",
-      avatar_url: null
+      avatar_url: null,
+      active_organization_id: null
     };
 
     const query = jest
@@ -71,12 +72,21 @@ describe("AuthService", () => {
       });
       query
         .mockResolvedValueOnce([
-          { id: "user-1", auth_user_id: "auth-1", email: "a@b.c", full_name: null, avatar_url: null }
+          {
+            id: "user-1",
+            auth_user_id: "auth-1",
+            email: "a@b.c",
+            full_name: null,
+            avatar_url: null,
+            active_organization_id: null
+          }
         ])
         .mockResolvedValueOnce([
           { organization_id: "org-1", role: "owner" },
           { organization_id: "org-2", role: "editor" }
-        ]);
+        ])
+        .mockResolvedValueOnce([{ active_organization_id: null }])
+        .mockResolvedValueOnce([]);
 
       const res = await service.validateSession("t", "org-2");
       expect(res.activeOrganizationId).toBe("org-2");
@@ -90,9 +100,18 @@ describe("AuthService", () => {
       });
       query
         .mockResolvedValueOnce([
-          { id: "user-1", auth_user_id: "auth-1", email: "a@b.c", full_name: null, avatar_url: null }
+          {
+            id: "user-1",
+            auth_user_id: "auth-1",
+            email: "a@b.c",
+            full_name: null,
+            avatar_url: null,
+            active_organization_id: null
+          }
         ])
-        .mockResolvedValueOnce([{ organization_id: "org-1", role: "owner" }]);
+        .mockResolvedValueOnce([{ organization_id: "org-1", role: "owner" }])
+        .mockResolvedValueOnce([{ active_organization_id: null }])
+        .mockResolvedValueOnce([]);
 
       const res = await service.validateSession("t", "org-inexistant");
       expect(res.activeOrganizationId).toBe("org-1");
@@ -106,12 +125,81 @@ describe("AuthService", () => {
       });
       query
         .mockResolvedValueOnce([
-          { id: "user-1", auth_user_id: "auth-1", email: "a@b.c", full_name: null, avatar_url: null }
+          {
+            id: "user-1",
+            auth_user_id: "auth-1",
+            email: "a@b.c",
+            full_name: null,
+            avatar_url: null,
+            active_organization_id: null
+          }
         ])
-        .mockResolvedValueOnce([]);
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ active_organization_id: null }]);
 
       const res = await service.validateSession("t");
       expect(res.activeOrganizationId).toBeNull();
+    });
+
+    it("retient l'organisation active persistee si elle est encore accessible", async () => {
+      const { service, getUser, query } = buildService();
+      getUser.mockResolvedValue({
+        data: { user: { id: "auth-1", email: "a@b.c", user_metadata: {} } },
+        error: null
+      });
+      query
+        .mockResolvedValueOnce([
+          {
+            id: "user-1",
+            auth_user_id: "auth-1",
+            email: "a@b.c",
+            full_name: null,
+            avatar_url: null,
+            active_organization_id: "org-2"
+          }
+        ])
+        .mockResolvedValueOnce([
+          { organization_id: "org-1", role: "owner" },
+          { organization_id: "org-2", role: "editor" }
+        ])
+        .mockResolvedValueOnce([{ active_organization_id: "org-2" }]);
+
+      const res = await service.validateSession("t");
+      expect(res.activeOrganizationId).toBe("org-2");
+    });
+  });
+
+  describe("setActiveOrganization", () => {
+    it("met a jour l'organisation active si l'utilisateur y a acces", async () => {
+      const { service, getUser, query } = buildService();
+      getUser.mockResolvedValue({
+        data: { user: { id: "auth-1", email: "a@b.c", user_metadata: {} } },
+        error: null
+      });
+      query
+        .mockResolvedValueOnce([
+          {
+            id: "user-1",
+            auth_user_id: "auth-1",
+            email: "a@b.c",
+            full_name: null,
+            avatar_url: null,
+            active_organization_id: null
+          }
+        ])
+        .mockResolvedValueOnce([
+          { organization_id: "org-1", role: "owner" },
+          { organization_id: "org-2", role: "editor" }
+        ])
+        .mockResolvedValueOnce([]);
+
+      const res = await service.setActiveOrganization("t", "org-2");
+
+      expect(res.activeOrganizationId).toBe("org-2");
+      expect(query).toHaveBeenLastCalledWith(
+        expect.stringContaining("update users"),
+        ["org-2", "user-1"]
+      );
     });
   });
 });

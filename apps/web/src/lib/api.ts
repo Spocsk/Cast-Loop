@@ -1,5 +1,7 @@
 import {
   CalendarPostItem,
+  CreateOrganizationInput,
+  CreateOrganizationResult,
   CreateMediaUploadUrlInput,
   CreateMediaUploadUrlResult,
   CreatePostInput,
@@ -10,25 +12,18 @@ import {
   PostState,
   PostSummary,
   SocialAccountSummary,
+  SocialProviderAvailability,
+  StartSocialConnectionInput,
   MediaAssetSummary,
-  AuthenticatedAppUser,
-  OrganizationRole,
+  StartSocialConnectionResult,
   UpdatePostInput,
-  UpdatePostResult
+  UpdatePostResult,
+  SetActiveOrganizationInput,
+  SetActiveOrganizationResult,
+  ValidatedSessionResult
 } from "@cast-loop/shared";
 import { webEnv } from "./env";
 import { createSupabaseBrowserClient } from "./supabase/client";
-
-interface Membership {
-  organizationId: string;
-  role: OrganizationRole;
-}
-
-interface ValidatedSession {
-  user: AuthenticatedAppUser;
-  memberships: Membership[];
-  activeOrganizationId: string | null;
-}
 
 export interface DashboardSnapshot {
   organizations: OrganizationSummary[];
@@ -41,6 +36,18 @@ export interface DashboardSnapshot {
     failed: number;
     connectedAccounts: number;
   };
+}
+
+export interface PendingSocialAccountSelection {
+  provider: "facebook" | "instagram" | "linkedin";
+  variant: string;
+  accounts: Array<{
+    externalAccountId: string;
+    displayName: string;
+    handle: string;
+    accountType: string;
+    publishCapability: string;
+  }>;
 }
 
 const buildApiUrl = (path: string, searchParams?: URLSearchParams) => {
@@ -96,7 +103,7 @@ async function apiRequest<T>(path: string, accessToken: string, init?: RequestIn
 }
 
 export async function validateAppSession(accessToken: string, organizationId?: string) {
-  return apiRequest<ValidatedSession>(
+  return apiRequest<ValidatedSessionResult>(
     "/auth/session/validate",
     accessToken,
     {
@@ -106,8 +113,22 @@ export async function validateAppSession(accessToken: string, organizationId?: s
   );
 }
 
+export async function setActiveOrganization(accessToken: string, payload: SetActiveOrganizationInput) {
+  return apiRequest<SetActiveOrganizationResult>("/auth/session/active-organization", accessToken, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function fetchOrganizations(accessToken: string) {
   return apiRequest<OrganizationSummary[]>("/organizations", accessToken);
+}
+
+export async function createOrganization(accessToken: string, payload: CreateOrganizationInput) {
+  return apiRequest<CreateOrganizationResult>("/organizations", accessToken, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function fetchPosts(
@@ -134,11 +155,81 @@ export async function fetchCalendar(accessToken: string, organizationId: string,
     to
   });
 
-  return apiRequest<CalendarPostItem[]>("/calendar", accessToken, undefined, searchParams);
+  type RawCalendarPostItem = Omit<CalendarPostItem, "providers"> & {
+    providers?: unknown;
+  };
+
+  const items = await apiRequest<RawCalendarPostItem[]>("/calendar", accessToken, undefined, searchParams);
+
+  return items.map((item) => ({
+    ...item,
+    providers: Array.isArray(item.providers)
+      ? item.providers
+      : typeof item.providers === "string" && item.providers.length > 0
+        ? item.providers
+            .replace(/^\{|\}$/g, "")
+            .split(",")
+            .map((provider: string) => provider.trim())
+            .filter(Boolean) as CalendarPostItem["providers"]
+        : []
+  }));
 }
 
 export async function fetchSocialAccounts(accessToken: string, organizationId: string) {
   return apiRequest<SocialAccountSummary[]>(`/organizations/${organizationId}/social-accounts`, accessToken);
+}
+
+export async function fetchSocialProviderAvailability(accessToken: string, organizationId: string) {
+  return apiRequest<SocialProviderAvailability[]>(
+    `/organizations/${organizationId}/social-accounts/providers`,
+    accessToken
+  );
+}
+
+export async function startSocialConnection(
+  accessToken: string,
+  organizationId: string,
+  provider: "facebook" | "instagram" | "linkedin",
+  payload: StartSocialConnectionInput
+) {
+  return apiRequest<StartSocialConnectionResult>(
+    `/organizations/${organizationId}/social-accounts/${provider}/start`,
+    accessToken,
+    {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
+export async function fetchPendingSocialAccountSelection(
+  accessToken: string,
+  organizationId: string,
+  selectionToken: string
+) {
+  const searchParams = new URLSearchParams({ selectionToken });
+  return apiRequest<PendingSocialAccountSelection>(
+    `/organizations/${organizationId}/social-accounts/pending-selection`,
+    accessToken,
+    undefined,
+    searchParams
+  );
+}
+
+export async function completePendingSocialAccountSelection(
+  accessToken: string,
+  organizationId: string,
+  selectionToken: string,
+  externalAccountId: string
+) {
+  return apiRequest<SocialAccountSummary>(
+    `/organizations/${organizationId}/social-accounts/pending-selection/complete`,
+    accessToken,
+    {
+      method: "POST",
+      body: JSON.stringify({ selectionToken, externalAccountId })
+    }
+  );
 }
 
 export async function fetchMediaAssets(accessToken: string, organizationId: string) {
@@ -235,7 +326,9 @@ export async function getDashboardSnapshot(accessToken: string, organizationId: 
       scheduled: posts.filter((post) => post.state === "scheduled").length,
       drafts: posts.filter((post) => post.state === "draft").length,
       failed: posts.filter((post) => post.state === "failed").length,
-      connectedAccounts: socialAccounts.filter((account) => account.status === "connected").length
+      connectedAccounts: socialAccounts.filter(
+        (account) => account.status === "connected" && account.publishCapability === "publishable"
+      ).length
     }
   } satisfies DashboardSnapshot;
 }
