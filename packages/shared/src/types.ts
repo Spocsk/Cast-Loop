@@ -120,6 +120,13 @@ export interface MediaAssetSummary {
   fileSizeBytes: number;
   width: number | null;
   height: number | null;
+  usageCount: number;
+}
+
+export interface DeleteMediaAssetResult {
+  id: string;
+  deleted: true;
+  usageCount: number;
 }
 
 export interface PostSummary {
