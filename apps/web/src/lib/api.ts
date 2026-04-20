@@ -4,6 +4,7 @@ import {
   CreateOrganizationResult,
   CreateMediaUploadUrlInput,
   CreateMediaUploadUrlResult,
+  DeleteMediaAssetResult,
   CreatePostInput,
   CreatePostResult,
   MediaAssetViewUrlResult,
@@ -281,6 +282,13 @@ export async function createMediaUploadUrl(accessToken: string, payload: CreateM
   return apiRequest<CreateMediaUploadUrlResult>("/media/upload-url", accessToken, {
     method: "POST",
     body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteMediaAsset(accessToken: string, organizationId: string, assetId: string) {
+  return apiRequest<DeleteMediaAssetResult>(`/media/${assetId}`, accessToken, {
+    method: "DELETE",
+    body: JSON.stringify({ organizationId })
   });
 }
 

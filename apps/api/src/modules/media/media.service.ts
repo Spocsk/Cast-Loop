@@ -28,19 +28,23 @@ export class MediaService {
       fileSizeBytes: number;
       width: number | null;
       height: number | null;
+      usageCount: number;
     }>(
       `
         select
-          id,
-          organization_id as "organizationId",
-          storage_path as "storagePath",
-          mime_type as "mimeType",
-          file_size_bytes as "fileSizeBytes",
-          width,
-          height
-        from media_assets
-        where organization_id = $1
-        order by created_at desc
+          ma.id,
+          ma.organization_id as "organizationId",
+          ma.storage_path as "storagePath",
+          ma.mime_type as "mimeType",
+          ma.file_size_bytes as "fileSizeBytes",
+          ma.width,
+          ma.height,
+          count(p.id)::int as "usageCount"
+        from media_assets ma
+        left join posts p on p.primary_media_asset_id = ma.id
+        where ma.organization_id = $1
+        group by ma.id
+        order by ma.created_at desc
       `,
       [organizationId]
     );
@@ -138,6 +142,72 @@ export class MediaService {
       assetId,
       signedUrl: data.signedUrl,
       expiresInSeconds
+    };
+  }
+
+  async deleteMedia(userId: string, organizationId: string, assetId: string) {
+    await this.organizationsService.assertMembership(organizationId, userId);
+
+    const [asset] = await this.databaseService.query<{
+      id: string;
+      organizationId: string;
+      storageBucket: string;
+      storagePath: string;
+      usageCount: number;
+    }>(
+      `
+        select
+          ma.id,
+          ma.organization_id as "organizationId",
+          ma.storage_bucket as "storageBucket",
+          ma.storage_path as "storagePath",
+          count(p.id)::int as "usageCount"
+        from media_assets ma
+        left join posts p on p.primary_media_asset_id = ma.id
+        where ma.id = $1
+          and ma.organization_id = $2
+        group by ma.id
+      `,
+      [assetId, organizationId]
+    );
+
+    if (!asset) {
+      throw new BadRequestException("Media introuvable pour cette organisation.");
+    }
+
+    const { error } = await this.supabaseAdminService.client.storage
+      .from(asset.storageBucket)
+      .remove([asset.storagePath]);
+
+    if (error) {
+      throw new BadRequestException(error.message ?? "Impossible de supprimer le fichier du stockage.");
+    }
+
+    await this.databaseService.query(
+      `
+        delete from media_assets
+        where id = $1
+          and organization_id = $2
+      `,
+      [assetId, organizationId]
+    );
+
+    await this.auditService.record({
+      organizationId,
+      actorUserId: userId,
+      entityType: "media_asset",
+      entityId: asset.id,
+      action: "media_asset.deleted",
+      payload: {
+        storagePath: asset.storagePath,
+        usageCount: asset.usageCount
+      }
+    });
+
+    return {
+      id: asset.id,
+      deleted: true as const,
+      usageCount: asset.usageCount
     };
   }
 }

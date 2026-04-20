@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { SupabaseAuthGuard } from "../../common/guards/supabase-auth.guard";
 import { CreateUploadUrlDto } from "./dto/create-upload-url.dto";
+import { DeleteMediaDto } from "./dto/delete-media.dto";
 import { MediaService } from "./media.service";
 
 @Controller("media")
@@ -26,5 +27,14 @@ export class MediaController {
   @Post("upload-url")
   async createUploadUrl(@CurrentUser() user: { id: string }, @Body() dto: CreateUploadUrlDto) {
     return this.mediaService.createUploadUrl(user.id, dto);
+  }
+
+  @Delete(":id")
+  async deleteMedia(
+    @CurrentUser() user: { id: string },
+    @Param("id") assetId: string,
+    @Body() dto: DeleteMediaDto
+  ) {
+    return this.mediaService.deleteMedia(user.id, dto.organizationId, assetId);
   }
 }
