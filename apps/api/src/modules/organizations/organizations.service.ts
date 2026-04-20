@@ -56,6 +56,17 @@ export class OrganizationsService {
           client
         );
 
+        await this.databaseService.query(
+          `
+            update users
+            set active_organization_id = $1,
+                updated_at = now()
+            where id = $2
+          `,
+          [createdOrganization.id, userId],
+          client
+        );
+
         await this.auditService.record(
           {
             organizationId: createdOrganization.id,

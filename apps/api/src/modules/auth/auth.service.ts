@@ -1,5 +1,5 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { AuthenticatedAppUser } from "@cast-loop/shared";
+import { ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { AuthenticatedAppUser, ValidatedSessionResult } from "@cast-loop/shared";
 import { DatabaseService } from "../../database/database.service";
 import { SupabaseAdminService } from "../../database/supabase-admin.service";
 
@@ -9,6 +9,7 @@ interface AppUserRow {
   email: string;
   full_name: string | null;
   avatar_url: string | null;
+  active_organization_id: string | null;
 }
 
 @Injectable()
@@ -59,15 +60,39 @@ export class AuthService {
 
   async validateSession(accessToken: string, organizationId?: string) {
     const authContext = await this.authenticate(accessToken);
+    const persistedOrganizationId = await this.getPersistedActiveOrganizationId(authContext.appUser.id);
+    const nextActiveOrganizationId = this.resolveActiveOrganizationId(
+      authContext.memberships,
+      organizationId,
+      persistedOrganizationId
+    );
+
+    if (nextActiveOrganizationId !== persistedOrganizationId) {
+      await this.persistActiveOrganizationId(authContext.appUser.id, nextActiveOrganizationId);
+    }
 
     return {
       user: authContext.appUser,
       memberships: authContext.memberships,
-      activeOrganizationId:
-        organizationId && authContext.memberships.some((membership) => membership.organizationId === organizationId)
-          ? organizationId
-          : authContext.memberships[0]?.organizationId ?? null
-    };
+      activeOrganizationId: nextActiveOrganizationId
+    } satisfies ValidatedSessionResult;
+  }
+
+  async setActiveOrganization(accessToken: string, organizationId: string) {
+    const authContext = await this.authenticate(accessToken);
+    const hasMembership = authContext.memberships.some((membership) => membership.organizationId === organizationId);
+
+    if (!hasMembership) {
+      throw new ForbiddenException("You do not have access to this organization");
+    }
+
+    await this.persistActiveOrganizationId(authContext.appUser.id, organizationId);
+
+    return {
+      user: authContext.appUser,
+      memberships: authContext.memberships,
+      activeOrganizationId: organizationId
+    } satisfies ValidatedSessionResult;
   }
 
   private async upsertAppUser(payload: {
@@ -85,7 +110,7 @@ export class AuthService {
             full_name = excluded.full_name,
             avatar_url = excluded.avatar_url,
             updated_at = now()
-        returning id, auth_user_id, email, full_name, avatar_url
+        returning id, auth_user_id, email, full_name, avatar_url, active_organization_id
       `,
       [payload.authUserId, payload.email, payload.fullName, payload.avatarUrl]
     );
@@ -97,5 +122,46 @@ export class AuthService {
       fullName: row.full_name,
       avatarUrl: row.avatar_url
     };
+  }
+
+  private resolveActiveOrganizationId(
+    memberships: Array<{ organizationId: string; role: "owner" | "manager" | "editor" }>,
+    requestedOrganizationId?: string,
+    persistedOrganizationId?: string | null
+  ) {
+    if (requestedOrganizationId && memberships.some((membership) => membership.organizationId === requestedOrganizationId)) {
+      return requestedOrganizationId;
+    }
+
+    if (persistedOrganizationId && memberships.some((membership) => membership.organizationId === persistedOrganizationId)) {
+      return persistedOrganizationId;
+    }
+
+    return memberships[0]?.organizationId ?? null;
+  }
+
+  private async getPersistedActiveOrganizationId(userId: string) {
+    const [user] = await this.databaseService.query<{ active_organization_id: string | null }>(
+      `
+        select active_organization_id
+        from users
+        where id = $1
+      `,
+      [userId]
+    );
+
+    return user?.active_organization_id ?? null;
+  }
+
+  private async persistActiveOrganizationId(userId: string, organizationId: string | null) {
+    await this.databaseService.query(
+      `
+        update users
+        set active_organization_id = $1,
+            updated_at = now()
+        where id = $2
+      `,
+      [organizationId, userId]
+    );
   }
 }

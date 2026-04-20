@@ -58,6 +58,29 @@ export interface OrganizationSummary {
   role: OrganizationRole;
 }
 
+export interface CreateOrganizationInput {
+  name: string;
+}
+
+export interface CreateOrganizationResult extends OrganizationSummary {}
+
+export interface SessionMembership {
+  organizationId: string;
+  role: OrganizationRole;
+}
+
+export interface ValidatedSessionResult {
+  user: AuthenticatedAppUser;
+  memberships: SessionMembership[];
+  activeOrganizationId: string | null;
+}
+
+export interface SetActiveOrganizationInput {
+  organizationId: string;
+}
+
+export interface SetActiveOrganizationResult extends ValidatedSessionResult {}
+
 export interface SocialAccountSummary {
   id: string;
   organizationId: string;

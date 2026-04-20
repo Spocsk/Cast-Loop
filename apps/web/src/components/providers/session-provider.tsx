@@ -1,6 +1,6 @@
 "use client";
 
-import { AuthenticatedAppUser, OrganizationRole } from "@cast-loop/shared";
+import { AuthenticatedAppUser, OrganizationSummary, SessionMembership } from "@cast-loop/shared";
 import { Session } from "@supabase/supabase-js";
 import {
   createContext,
@@ -11,14 +11,9 @@ import {
   useMemo,
   useState
 } from "react";
-import { validateAppSession } from "@/lib/api";
+import { fetchOrganizations, setActiveOrganization, validateAppSession } from "@/lib/api";
 import { hasSupabaseClientEnv } from "@/lib/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-
-interface Membership {
-  organizationId: string;
-  role: OrganizationRole;
-}
 
 type SessionStatus = "loading" | "authenticated" | "unauthenticated";
 
@@ -27,22 +22,27 @@ interface SessionContextValue {
   accessToken: string | null;
   session: Session | null;
   user: AuthenticatedAppUser | null;
-  memberships: Membership[];
+  memberships: SessionMembership[];
+  organizations: OrganizationSummary[];
   activeOrganizationId: string | null;
+  activeOrganization: OrganizationSummary | null;
   error: string | null;
   refreshSession: () => Promise<void>;
+  setActiveOrganization: (organizationId: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
-const initialState: Omit<SessionContextValue, "refreshSession" | "signOut"> = {
+const initialState: Omit<SessionContextValue, "refreshSession" | "setActiveOrganization" | "signOut"> = {
   status: "loading",
   accessToken: null,
   session: null,
   user: null,
   memberships: [],
+  organizations: [],
   activeOrganizationId: null,
+  activeOrganization: null,
   error: null
 };
 
@@ -86,7 +86,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           accessToken: session.access_token,
           user: validatedSession.user,
           memberships: validatedSession.memberships,
+          organizations: [],
           activeOrganizationId: validatedSession.activeOrganizationId,
+          activeOrganization: null,
           error: null
         });
       });
@@ -133,6 +135,48 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, [supabase]);
 
+  useEffect(() => {
+    if (state.status !== "authenticated" || !state.accessToken) {
+      return;
+    }
+
+    let active = true;
+
+    void fetchOrganizations(state.accessToken)
+      .then((organizations) => {
+        if (!active) return;
+
+        startTransition(() => {
+          setState((current) => {
+            const activeOrganization =
+              organizations.find((organization) => organization.id === current.activeOrganizationId) ?? null;
+
+            return {
+              ...current,
+              organizations,
+              activeOrganization
+            };
+          });
+        });
+      })
+      .catch((error) => {
+        if (!active) return;
+
+        startTransition(() => {
+          setState((current) => ({
+            ...current,
+            organizations: [],
+            activeOrganization: null,
+            error: error instanceof Error ? error.message : "Impossible de charger les organisations."
+          }));
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [state.accessToken, state.activeOrganizationId, state.status]);
+
   const value: SessionContextValue = {
     ...state,
     refreshSession: async () => {
@@ -141,6 +185,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         data: { session }
       } = await supabase.auth.getSession();
       await syncSession(session);
+    },
+    setActiveOrganization: async (organizationId: string) => {
+      if (!state.accessToken || state.activeOrganizationId === organizationId) {
+        return;
+      }
+
+      const validatedSession = await setActiveOrganization(state.accessToken, { organizationId });
+
+      startTransition(() => {
+        setState((current) => ({
+          ...current,
+          memberships: validatedSession.memberships,
+          activeOrganizationId: validatedSession.activeOrganizationId,
+          activeOrganization:
+            current.organizations.find((organization) => organization.id === validatedSession.activeOrganizationId) ?? null,
+          error: null
+        }));
+      });
     },
     signOut: async () => {
       if (!supabase) return;

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { CalendarBoard } from "@/components/posts/calendar-board";
 import { useSessionContext } from "@/components/providers/session-provider";
 import { DataState } from "@/components/ui/data-state";
+import { OrganizationScope } from "@/components/ui/organization-scope";
 import { fetchCalendar } from "@/lib/api";
 
 export default function CalendarPage() {
@@ -55,6 +56,7 @@ export default function CalendarPage() {
         eyebrow="Calendrier"
         title="Chargement des publications"
         description="Lecture des posts planifies depuis la base Supabase."
+        loading
       />
     );
   }
@@ -78,6 +80,7 @@ export default function CalendarPage() {
       <header className="page-header">
         <span className="eyebrow">Calendrier</span>
         <h2>Programmation editoriale</h2>
+        <OrganizationScope />
       </header>
       {items.length > 0 ? (
         <CalendarBoard items={items} />

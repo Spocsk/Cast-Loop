@@ -5,7 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarBoard } from "@/components/posts/calendar-board";
 import { PostsTable } from "@/components/posts/posts-table";
 import { useSessionContext } from "@/components/providers/session-provider";
+import { EmptyState } from "@/components/ui/empty-state";
+import { BuildingIcon } from "@/components/ui/icons";
 import { ProviderPill } from "@/components/ui/provider-pill";
+import { OrganizationScope } from "@/components/ui/organization-scope";
 import { StatCard } from "@/components/ui/stat-card";
 import { DataState } from "@/components/ui/data-state";
 import { DashboardSnapshot, getDashboardSnapshot } from "@/lib/api";
@@ -63,10 +66,11 @@ export default function DashboardPage() {
 
   if (isLoading || status !== "authenticated") {
     return (
-      <DataState
+        <DataState
         eyebrow="Dashboard"
-        title="Connexion a Supabase"
-        description="Chargement des donnees reelles du cockpit de publication."
+        title="Connexion à Supabase"
+        description="Chargement des données réelles du cockpit de publication."
+        loading
       />
     );
   }
@@ -76,7 +80,7 @@ export default function DashboardPage() {
       <DataState
         eyebrow="Dashboard"
         title="Aucune organisation disponible"
-        description="Le compte connecte n'a encore aucune organisation associee dans Supabase."
+        description="Le compte connecté n'a encore aucune organisation associée dans Supabase."
       />
     );
   }
@@ -89,8 +93,8 @@ export default function DashboardPage() {
     return (
       <DataState
         eyebrow="Dashboard"
-        title="Aucune donnee disponible"
-        description="La session est active, mais aucun snapshot n'a pu etre construit."
+        title="Aucune donnée disponible"
+        description="La session est active, mais aucun snapshot n'a pu être construit."
       />
     );
   }
@@ -102,28 +106,63 @@ export default function DashboardPage() {
         .map((account) => account.provider)
     )
   ) as SocialProvider[];
+  const postsDueSoon = snapshot.posts.filter((post) => {
+    if (post.state !== "scheduled" || !post.scheduledAt) return false;
+    const diffMs = new Date(post.scheduledAt).getTime() - Date.now();
+    return diffMs > 0 && diffMs <= 24 * 60 * 60 * 1000;
+  }).length;
+  const accountsExpiringSoon = snapshot.socialAccounts.filter((account) => {
+    if (account.status !== "connected" || !account.tokenExpiresAt) return false;
+    const diffDays = Math.ceil((new Date(account.tokenExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    return diffDays <= 14;
+  }).length;
+  const failedPosts = snapshot.kpis.failed;
 
   return (
     <div className="page-stack">
-      <section className="hero panel">
-        <div>
+      <section className="panel page-header-with-pills">
+        <header className="page-header">
           <span className="eyebrow">Vue d'ensemble</span>
           <h2>Tableau de bord</h2>
-        </div>
+          <OrganizationScope />
+        </header>
         <div className="provider-stack">
           {connectedProviders.length > 0 ? (
             connectedProviders.map((provider) => <ProviderPill key={provider} provider={provider} />)
           ) : (
-            <p className="muted">Aucun compte social connecte.</p>
+            <EmptyState
+              icon={<BuildingIcon />}
+              title="Aucun compte social connecté"
+              description="Connecte un premier réseau pour commencer à planifier et publier depuis le cockpit."
+            />
           )}
         </div>
       </section>
 
       <section className="stats-grid">
-        <StatCard label="Programmes" value={snapshot.kpis.scheduled} hint="En attente de publication" />
-        <StatCard label="Brouillons" value={snapshot.kpis.drafts} hint="En cours d'edition" />
-        <StatCard label="Echecs" value={snapshot.kpis.failed} hint="A corriger" />
-        <StatCard label="Comptes" value={snapshot.kpis.connectedAccounts} hint="Connectes et actifs" />
+        <StatCard
+          label="Programmes"
+          value={snapshot.kpis.scheduled}
+          hint={postsDueSoon > 0 ? `${postsDueSoon} publication(s) dans moins de 24h` : "En attente de publication"}
+          className={postsDueSoon > 0 ? "stat-card-accent" : undefined}
+        />
+        <StatCard label="Brouillons" value={snapshot.kpis.drafts} hint="En cours d'édition" />
+        <StatCard
+          label="Echecs"
+          value={failedPosts}
+          hint={failedPosts > 0 ? "Des publications demandent une action" : "Aucun échec en attente"}
+          className={failedPosts > 0 ? "stat-card-danger" : undefined}
+        />
+        <StatCard
+          label="Comptes"
+          value={snapshot.kpis.connectedAccounts}
+          hint={
+            accountsExpiringSoon > 0
+              ? `${accountsExpiringSoon} compte(s) à reconnecter bientôt`
+              : "Connectés et actifs"
+          }
+          className={accountsExpiringSoon > 0 ? "stat-card-warning" : undefined}
+        />
       </section>
 
       <CalendarBoard items={snapshot.calendarItems} />

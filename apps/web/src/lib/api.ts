@@ -1,5 +1,7 @@
 import {
   CalendarPostItem,
+  CreateOrganizationInput,
+  CreateOrganizationResult,
   CreateMediaUploadUrlInput,
   CreateMediaUploadUrlResult,
   CreatePostInput,
@@ -13,25 +15,15 @@ import {
   SocialProviderAvailability,
   StartSocialConnectionInput,
   MediaAssetSummary,
-  AuthenticatedAppUser,
-  OrganizationRole,
   StartSocialConnectionResult,
   UpdatePostInput,
-  UpdatePostResult
+  UpdatePostResult,
+  SetActiveOrganizationInput,
+  SetActiveOrganizationResult,
+  ValidatedSessionResult
 } from "@cast-loop/shared";
 import { webEnv } from "./env";
 import { createSupabaseBrowserClient } from "./supabase/client";
-
-interface Membership {
-  organizationId: string;
-  role: OrganizationRole;
-}
-
-interface ValidatedSession {
-  user: AuthenticatedAppUser;
-  memberships: Membership[];
-  activeOrganizationId: string | null;
-}
 
 export interface DashboardSnapshot {
   organizations: OrganizationSummary[];
@@ -111,7 +103,7 @@ async function apiRequest<T>(path: string, accessToken: string, init?: RequestIn
 }
 
 export async function validateAppSession(accessToken: string, organizationId?: string) {
-  return apiRequest<ValidatedSession>(
+  return apiRequest<ValidatedSessionResult>(
     "/auth/session/validate",
     accessToken,
     {
@@ -121,8 +113,22 @@ export async function validateAppSession(accessToken: string, organizationId?: s
   );
 }
 
+export async function setActiveOrganization(accessToken: string, payload: SetActiveOrganizationInput) {
+  return apiRequest<SetActiveOrganizationResult>("/auth/session/active-organization", accessToken, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function fetchOrganizations(accessToken: string) {
   return apiRequest<OrganizationSummary[]>("/organizations", accessToken);
+}
+
+export async function createOrganization(accessToken: string, payload: CreateOrganizationInput) {
+  return apiRequest<CreateOrganizationResult>("/organizations", accessToken, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function fetchPosts(
@@ -149,7 +155,24 @@ export async function fetchCalendar(accessToken: string, organizationId: string,
     to
   });
 
-  return apiRequest<CalendarPostItem[]>("/calendar", accessToken, undefined, searchParams);
+  type RawCalendarPostItem = Omit<CalendarPostItem, "providers"> & {
+    providers?: unknown;
+  };
+
+  const items = await apiRequest<RawCalendarPostItem[]>("/calendar", accessToken, undefined, searchParams);
+
+  return items.map((item) => ({
+    ...item,
+    providers: Array.isArray(item.providers)
+      ? item.providers
+      : typeof item.providers === "string" && item.providers.length > 0
+        ? item.providers
+            .replace(/^\{|\}$/g, "")
+            .split(",")
+            .map((provider: string) => provider.trim())
+            .filter(Boolean) as CalendarPostItem["providers"]
+        : []
+  }));
 }
 
 export async function fetchSocialAccounts(accessToken: string, organizationId: string) {

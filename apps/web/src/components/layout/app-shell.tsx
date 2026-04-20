@@ -7,10 +7,13 @@ import { usePathname } from "next/navigation";
 import type { Route } from "next";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { useSessionContext } from "@/components/providers/session-provider";
+import { Dropdown } from "@/components/ui/dropdown";
+import { Spinner } from "@/components/ui/spinner";
+import { useToast } from "@/components/ui/toast-provider";
 import { getGravatarUrl } from "@/lib/gravatar";
 
 const navigation: Array<{ href: Route; label: string }> = [
-  { href: "/dashboard", label: "Overview" },
+  { href: "/dashboard", label: "Vue d'ensemble" },
   { href: "/calendar", label: "Calendrier" },
   { href: "/posts", label: "Posts" },
   { href: "/media", label: "Médias" },
@@ -22,8 +25,11 @@ const navigation: Array<{ href: Route; label: string }> = [
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, signOut } = useSessionContext();
+  const { user, organizations, activeOrganizationId, setActiveOrganization, signOut } =
+    useSessionContext();
+  const toast = useToast();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isSwitchingOrganization, setIsSwitchingOrganization] = useState(false);
 
   const userDisplayName = useMemo(() => {
     if (!user) return null;
@@ -36,6 +42,20 @@ export function AppShell({ children }: { children: ReactNode }) {
     return getGravatarUrl(user.email, 96);
   }, [user]);
 
+  const currentNavLabel = useMemo(() => {
+    return navigation.find((item) => item.href === pathname)?.label ?? null;
+  }, [pathname]);
+
+  const organizationOptions = useMemo(
+    () =>
+      organizations.map((organization) => ({
+        value: organization.id,
+        label: organization.name,
+        hint: organization.role
+      })),
+    [organizations]
+  );
+
   useEffect(() => {
     setIsMobileNavOpen(false);
   }, [pathname]);
@@ -44,6 +64,25 @@ export function AppShell({ children }: { children: ReactNode }) {
     await signOut();
     setIsMobileNavOpen(false);
     router.push("/auth/login");
+  };
+
+  const handleOrganizationChange = async (organizationId: string) => {
+    if (!organizationId || organizationId === activeOrganizationId) {
+      return;
+    }
+
+    setIsSwitchingOrganization(true);
+
+    try {
+      await setActiveOrganization(organizationId);
+      const organizationName =
+        organizations.find((organization) => organization.id === organizationId)?.name ?? "Organisation";
+      toast.success(`${organizationName} est maintenant l'entreprise active.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossible de changer d'entreprise active.");
+    } finally {
+      setIsSwitchingOrganization(false);
+    }
   };
 
   return (
@@ -62,6 +101,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="sidebar-brand-copy">
               <p className="brand-kicker">Cast Loop</p>
               <h1>Cockpit de publication</h1>
+              {currentNavLabel ? (
+                <span className="sidebar-current-crumb" aria-hidden="true">
+                  {currentNavLabel}
+                </span>
+              ) : null}
             </div>
           </div>
 
@@ -89,6 +133,25 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <div className="sidebar-panel">
+          {organizations.length > 0 ? (
+            <div className="sidebar-org-switcher">
+              <Dropdown
+                options={organizationOptions}
+                value={activeOrganizationId}
+                onChange={(nextValue) => void handleOrganizationChange(nextValue)}
+                label="Changer d'entreprise active"
+                kicker="Entreprise active"
+                invert
+                disabled={organizations.length <= 1 || isSwitchingOrganization}
+                trailing={
+                  isSwitchingOrganization ? (
+                    <Spinner size="sm" label="Changement d'entreprise" />
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : null}
+
           <nav id="sidebar-navigation" className="sidebar-nav">
             {navigation.map((item) => (
               <Link

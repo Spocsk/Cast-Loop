@@ -8,8 +8,13 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSessionContext } from "@/components/providers/session-provider";
+import { EmptyState } from "@/components/ui/empty-state";
+import { BuildingIcon, LinkIcon } from "@/components/ui/icons";
 import { ProviderPill } from "@/components/ui/provider-pill";
 import { DataState } from "@/components/ui/data-state";
+import { OrganizationScope } from "@/components/ui/organization-scope";
+import { Spinner } from "@/components/ui/spinner";
+import { useToast } from "@/components/ui/toast-provider";
 import {
   fetchSocialAccounts,
   fetchPendingSocialAccountSelection,
@@ -20,6 +25,7 @@ import {
 
 export default function SocialAccountsPage() {
   const { accessToken, activeOrganizationId, status } = useSessionContext();
+  const toast = useToast();
   const searchParams = useSearchParams();
   const [accounts, setAccounts] = useState<SocialAccountSummary[]>([]);
   const [providers, setProviders] = useState<SocialProviderAvailability[]>([]);
@@ -142,7 +148,7 @@ export default function SocialAccountsPage() {
       case "success":
         return {
           tone: "success",
-          text: `${providerLabel} est maintenant connecte.`
+          text: `${providerLabel} est maintenant connecté.`
         };
       case "cancelled":
         return {
@@ -179,6 +185,17 @@ export default function SocialAccountsPage() {
     }
   }, [flashProvider, flashStatus, flashVariant]);
 
+  useEffect(() => {
+    if (!callbackMessage) return;
+    if (callbackMessage.tone === "success") {
+      toast.success(callbackMessage.text);
+    } else if (callbackMessage.tone === "warning") {
+      toast.warning(callbackMessage.text);
+    } else {
+      toast.error(callbackMessage.text);
+    }
+  }, [callbackMessage, toast]);
+
   const handleConnectionStart = async (
     provider: "facebook" | "instagram" | "linkedin",
     variant: SocialProviderAvailability["variant"]
@@ -191,7 +208,10 @@ export default function SocialAccountsPage() {
       const result = await startSocialConnection(accessToken, activeOrganizationId, provider, { variant });
       window.location.assign(result.authorizationUrl);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Impossible de demarrer la connexion.");
+      const message =
+        nextError instanceof Error ? nextError.message : "Impossible de démarrer la connexion.";
+      setError(message);
+      toast.error(message);
       setConnectingProvider(null);
     }
   };
@@ -212,7 +232,10 @@ export default function SocialAccountsPage() {
       setAccounts(nextAccounts);
       setProviders(nextProviders);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Impossible de finaliser la connexion.");
+      const message =
+        nextError instanceof Error ? nextError.message : "Impossible de finaliser la connexion.";
+      setError(message);
+      toast.error(message);
     }
   };
 
@@ -222,6 +245,7 @@ export default function SocialAccountsPage() {
         eyebrow="Comptes sociaux"
         title="Chargement des connexions"
         description="Recuperation des comptes sociaux relies a l'organisation active."
+        loading
       />
     );
   }
@@ -245,11 +269,8 @@ export default function SocialAccountsPage() {
       <header className="page-header">
         <span className="eyebrow">Comptes sociaux</span>
         <h2>Connexions actives</h2>
+        <OrganizationScope />
       </header>
-
-      {callbackMessage ? (
-        <p className={`social-feedback social-feedback-${callbackMessage.tone}`}>{callbackMessage.text}</p>
-      ) : null}
 
       {error ? <p className="social-feedback social-feedback-danger">{error}</p> : null}
 
@@ -298,7 +319,9 @@ export default function SocialAccountsPage() {
           </div>
 
           {isLoadingSelection ? (
-            <p className="muted">Chargement des comptes disponibles…</p>
+            <p className="muted">
+              <Spinner size="sm" label="Chargement de la sélection" /> Chargement des comptes disponibles…
+            </p>
           ) : pendingSelection && pendingSelection.accounts.length > 0 ? (
             <div className="social-provider-grid">
               {pendingSelection.accounts.map((account) => (
@@ -321,7 +344,11 @@ export default function SocialAccountsPage() {
               ))}
             </div>
           ) : (
-            <p className="muted">Aucun compte selectionnable n'a ete remonte par le provider.</p>
+            <EmptyState
+              icon={<LinkIcon />}
+              title="Aucun compte sélectionnable"
+              description="Le provider n'a remonté aucun compte finalisable pour ce parcours."
+            />
           )}
         </section>
       ) : null}
@@ -335,11 +362,20 @@ export default function SocialAccountsPage() {
         </header>
 
         {accounts.length === 0 ? (
-          <article className="social-empty-state">
-            <span className="eyebrow">Aucun compte</span>
-            <strong>Aucun compte connecte pour le moment</strong>
-            <p>Connecte LinkedIn depuis le bloc ci-dessus pour commencer a publier.</p>
-          </article>
+          <EmptyState
+            icon={<BuildingIcon />}
+            title="Aucun compte connecté"
+            description="Connecte ton premier compte LinkedIn, Facebook ou Instagram depuis le bloc ci-dessus pour commencer à publier."
+            actions={
+              <button
+                type="button"
+                className="secondary-button secondary-button-action"
+                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              >
+                Connecter un réseau
+              </button>
+            }
+          />
         ) : (
           accounts.map((account) => (
             <article key={account.id} className="table-row">
@@ -356,7 +392,10 @@ export default function SocialAccountsPage() {
                 <span className={`status status-${account.status}`}>{account.status}</span>
               </div>
               <div>
-                <strong>{formatTokenExpiry(account.tokenExpiresAt)}</strong>
+                <span className={tokenExpiryClassName(account.tokenExpiresAt)}>
+                  <span className="token-expiry-dot" />
+                  {formatTokenExpiry(account.tokenExpiresAt)}
+                </span>
               </div>
             </article>
           ))
@@ -378,6 +417,26 @@ const formatTokenExpiry = (tokenExpiresAt: string | null) => {
     hour: "2-digit",
     minute: "2-digit"
   });
+};
+
+const tokenExpiryClassName = (tokenExpiresAt: string | null) => {
+  const baseClassName = "token-expiry";
+  if (!tokenExpiresAt) {
+    return `${baseClassName} token-expiry-none`;
+  }
+
+  const expiresAt = new Date(tokenExpiresAt);
+  const diffDays = Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 3) {
+    return `${baseClassName} token-expiry-danger`;
+  }
+
+  if (diffDays <= 14) {
+    return `${baseClassName} token-expiry-warning`;
+  }
+
+  return baseClassName;
 };
 
 const accountLabel = (accountType: string) => {
