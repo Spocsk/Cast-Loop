@@ -9,6 +9,7 @@ import {
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSessionContext } from "@/components/providers/session-provider";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Dropdown } from "@/components/ui/dropdown";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -35,6 +36,16 @@ interface CreatePostDialogProps {
 
 type Mode = "draft" | "scheduled";
 type FieldName = "title" | "content" | "scheduledAt" | "targetSocialAccountIds" | "sendTelegramReminder";
+type LocalDraftPayload = {
+  title: string;
+  content: string;
+  mode: Mode;
+  scheduledAt: string;
+  selectedAccountIds: string[];
+  mediaAssetId: string | null;
+  sendTelegramReminder: boolean;
+  updatedAt: string;
+};
 
 export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDialogProps) {
   const { accessToken, activeOrganizationId } = useSessionContext();
@@ -58,10 +69,14 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
   const [dragging, setDragging] = useState(false);
   const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [hasInitializedLocalDraft, setHasInitializedLocalDraft] = useState(false);
+  const [hasRestoredLocalDraft, setHasRestoredLocalDraft] = useState(false);
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const uploadAbortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewObjectUrlRef = useRef<string | null>(null);
   const isEditing = Boolean(post);
+  const localDraftKey = activeOrganizationId ? buildLocalDraftStorageKey(activeOrganizationId) : null;
 
   useEffect(() => {
     setMounted(true);
@@ -116,16 +131,40 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
 
   useEffect(() => {
     if (!open) {
+      setHasInitializedLocalDraft(false);
       return;
     }
 
-    setTitle(post?.title ?? "");
-    setContent(post?.content ?? "");
-    setMode(post?.scheduledAt ? "scheduled" : "draft");
-    setScheduledAt(post?.scheduledAt ? toDateTimeLocalValue(post.scheduledAt) : "");
-    setSelectedAccountIds(post?.targetSocialAccountIds ?? []);
-    setMediaAssetId(post?.primaryMediaAssetId ?? null);
-    setSendTelegramReminder(post?.sendTelegramReminder ?? false);
+    setConfirmDiscardOpen(false);
+
+    if (post) {
+      setTitle(post.title);
+      setContent(post.content);
+      setMode(post.scheduledAt ? "scheduled" : "draft");
+      setScheduledAt(post.scheduledAt ? toDateTimeLocalValue(post.scheduledAt) : "");
+      setSelectedAccountIds(post.targetSocialAccountIds);
+      setMediaAssetId(post.primaryMediaAssetId ?? null);
+      setSendTelegramReminder(post.sendTelegramReminder);
+      setHasRestoredLocalDraft(false);
+    } else {
+      const localDraft = localDraftKey ? readLocalDraft(localDraftKey) : null;
+
+      if (localDraft) {
+        setTitle(localDraft.title);
+        setContent(localDraft.content);
+        setMode(localDraft.mode);
+        setScheduledAt(localDraft.scheduledAt);
+        setSelectedAccountIds(localDraft.selectedAccountIds);
+        setMediaAssetId(localDraft.mediaAssetId);
+        setSendTelegramReminder(localDraft.sendTelegramReminder);
+        setHasRestoredLocalDraft(true);
+      } else {
+        resetState();
+        setHasRestoredLocalDraft(false);
+      }
+    }
+
+    setHasInitializedLocalDraft(true);
     setUploadStatus("idle");
     setUploadError(null);
     setSubmitError(null);
@@ -134,12 +173,34 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
     setTouchedFields({});
     setDragging(false);
     resetPreview();
-  }, [open, post]);
+  }, [localDraftKey, open, post]);
 
-  const handleClose = () => {
+  const closeDialog = () => {
     uploadAbortRef.current?.abort();
     resetState();
+    setHasInitializedLocalDraft(false);
+    setHasRestoredLocalDraft(false);
+    setConfirmDiscardOpen(false);
     onClose();
+  };
+
+  const clearLocalDraft = () => {
+    if (localDraftKey) {
+      window.localStorage.removeItem(localDraftKey);
+    }
+  };
+
+  const handleCloseRequest = () => {
+    if (!open) {
+      return;
+    }
+
+    if (!isEditing && hasMeaningfulDraft({ title, content, mode, scheduledAt, selectedAccountIds, mediaAssetId, sendTelegramReminder })) {
+      setConfirmDiscardOpen(true);
+      return;
+    }
+
+    closeDialog();
   };
 
   useEffect(() => {
@@ -197,6 +258,67 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
       active = false;
     };
   }, [accessToken, activeOrganizationId, mediaAssetId]);
+
+  useEffect(() => {
+    if (!open || isEditing || !localDraftKey || !hasInitializedLocalDraft) {
+      return;
+    }
+
+    const localDraft = buildLocalDraftPayload({
+      title,
+      content,
+      mode,
+      scheduledAt,
+      selectedAccountIds,
+      mediaAssetId,
+      sendTelegramReminder
+    });
+
+    if (!localDraft) {
+      window.localStorage.removeItem(localDraftKey);
+      return;
+    }
+
+    window.localStorage.setItem(localDraftKey, JSON.stringify(localDraft));
+  }, [
+    content,
+    hasInitializedLocalDraft,
+    isEditing,
+    localDraftKey,
+    mediaAssetId,
+    mode,
+    open,
+    scheduledAt,
+    selectedAccountIds,
+    sendTelegramReminder,
+    title
+  ]);
+
+  useEffect(() => {
+    if (!open || isEditing || isLoadingLists) {
+      return;
+    }
+
+    const validSelectedAccountIds = selectedAccountIds.filter((accountId) =>
+      accounts.some((account) => account.id === accountId)
+    );
+
+    if (validSelectedAccountIds.length !== selectedAccountIds.length) {
+      setSelectedAccountIds(validSelectedAccountIds);
+    }
+  }, [accounts, isEditing, isLoadingLists, open, selectedAccountIds]);
+
+  useEffect(() => {
+    if (!open || isEditing || isLoadingLists || !mediaAssetId) {
+      return;
+    }
+
+    const hasMedia = existingMedia.some((asset) => asset.id === mediaAssetId);
+
+    if (!hasMedia) {
+      setMediaAssetId(null);
+    }
+  }, [existingMedia, isEditing, isLoadingLists, mediaAssetId, open]);
 
   const selectedAccounts = accounts.filter((account) => selectedAccountIds.includes(account.id));
   const selectedConnectOnlyAccounts = selectedAccounts.filter(
@@ -378,11 +500,13 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
         toast.success("Le post a été mis à jour.");
       } else {
         await createPost(accessToken, payload);
+        clearLocalDraft();
         toast.success(mode === "scheduled" ? "Le post a été planifié." : "Le brouillon a été créé.");
       }
 
       onSaved();
       resetState();
+      setHasRestoredLocalDraft(false);
       onClose();
     } catch (error) {
       const message =
@@ -433,7 +557,7 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
       aria-modal="true"
       aria-labelledby="post-dialog-title"
       onClick={(event) => {
-        if (event.target === event.currentTarget) handleClose();
+        if (event.target === event.currentTarget) handleCloseRequest();
       }}
     >
       <form className="dialog-shell dialog-shell--xl create-post-dialog" onSubmit={handleSubmit}>
@@ -442,7 +566,7 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
             <span className="eyebrow">{isEditing ? "Édition du post" : "Nouveau post"}</span>
             <h2 id="post-dialog-title">{isEditing ? "Modifier le post" : "Créer un post"}</h2>
           </div>
-          <button type="button" className="secondary-button secondary-button-action" onClick={handleClose}>
+          <button type="button" className="secondary-button secondary-button-action" onClick={handleCloseRequest}>
             Fermer
           </button>
         </div>
@@ -451,6 +575,9 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
           <div className="create-post-main">
             <label className="form-field">
               <span className="form-label-required">Titre</span>
+              {hasRestoredLocalDraft && !isEditing ? (
+                <span className="form-hint">Brouillon local restauré automatiquement.</span>
+              ) : null}
               <input
                 className="form-input"
                 type="text"
@@ -717,7 +844,7 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
             {submitError ? <p className="form-hint-error">{submitError}</p> : null}
 
             <div className="dialog-actions">
-              <button type="button" className="secondary-button secondary-button-action" onClick={handleClose}>
+              <button type="button" className="secondary-button secondary-button-action" onClick={handleCloseRequest}>
                 Annuler
               </button>
               <button
@@ -793,10 +920,84 @@ export function CreatePostDialog({ open, post, onClose, onSaved }: CreatePostDia
           </aside>
         </div>
       </form>
+      <ConfirmDialog
+        open={confirmDiscardOpen}
+        title="Supprimer le brouillon local ?"
+        description="Le contenu saisi pour ce nouveau post sera perdu sur cet appareil."
+        confirmLabel="Abandonner"
+        cancelLabel="Continuer l’édition"
+        tone="danger"
+        onCancel={() => setConfirmDiscardOpen(false)}
+        onConfirm={() => {
+          clearLocalDraft();
+          closeDialog();
+        }}
+      />
     </div>,
     document.body
   );
 }
+
+const buildLocalDraftStorageKey = (organizationId: string) => `cast-loop:create-post-draft:${organizationId}`;
+
+const buildLocalDraftPayload = (draft: Omit<LocalDraftPayload, "updatedAt">): LocalDraftPayload | null => {
+  if (!hasMeaningfulDraft(draft)) {
+    return null;
+  }
+
+  return {
+    ...draft,
+    updatedAt: new Date().toISOString()
+  };
+};
+
+const readLocalDraft = (storageKey: string): LocalDraftPayload | null => {
+  const rawValue = window.localStorage.getItem(storageKey);
+
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as Partial<LocalDraftPayload>;
+
+    return {
+      title: typeof parsed.title === "string" ? parsed.title : "",
+      content: typeof parsed.content === "string" ? parsed.content : "",
+      mode: parsed.mode === "scheduled" ? "scheduled" : "draft",
+      scheduledAt: typeof parsed.scheduledAt === "string" ? parsed.scheduledAt : "",
+      selectedAccountIds: Array.isArray(parsed.selectedAccountIds)
+        ? parsed.selectedAccountIds.filter((value): value is string => typeof value === "string")
+        : [],
+      mediaAssetId: typeof parsed.mediaAssetId === "string" ? parsed.mediaAssetId : null,
+      sendTelegramReminder: Boolean(parsed.sendTelegramReminder),
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString()
+    };
+  } catch {
+    window.localStorage.removeItem(storageKey);
+    return null;
+  }
+};
+
+const hasMeaningfulDraft = ({
+  title,
+  content,
+  mode,
+  scheduledAt,
+  selectedAccountIds,
+  mediaAssetId,
+  sendTelegramReminder
+}: Pick<
+  LocalDraftPayload,
+  "title" | "content" | "mode" | "scheduledAt" | "selectedAccountIds" | "mediaAssetId" | "sendTelegramReminder"
+>) =>
+  title.trim().length > 0 ||
+  content.trim().length > 0 ||
+  mode === "scheduled" ||
+  scheduledAt.length > 0 ||
+  selectedAccountIds.length > 0 ||
+  mediaAssetId !== null ||
+  sendTelegramReminder;
 
 const toDateTimeLocalValue = (isoString: string) => {
   const date = new Date(isoString);
