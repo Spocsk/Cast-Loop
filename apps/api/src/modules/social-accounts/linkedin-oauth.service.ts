@@ -5,7 +5,7 @@ import {
 } from "@cast-loop/shared";
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { AppEnv } from "../../config/env";
+import { AppEnv, DEFAULT_LINKEDIN_API_VERSION } from "../../config/env";
 
 export interface NormalizedSocialAccount {
   provider: "facebook" | "instagram" | "linkedin";
@@ -159,6 +159,8 @@ export class LinkedInOAuthService {
       metadata: {
         linkedinPersonId: personId,
         linkedinPersonUrn: `urn:li:person:${personId}`,
+        linkedinApiVersion:
+          this.configService.get("linkedinApiVersion", { infer: true }) || DEFAULT_LINKEDIN_API_VERSION,
         profilePictureUrl: userInfo.picture ?? null,
         locale: userInfo.locale ?? null
       }
@@ -196,7 +198,8 @@ export class LinkedInOAuthService {
           metadata: {
             linkedinOrganizationId: organizationId,
             linkedinOrganizationUrn: `urn:li:organization:${organizationId}`,
-            linkedinApiVersion: this.configService.get("linkedinApiVersion", { infer: true }) || null,
+            linkedinApiVersion:
+              this.configService.get("linkedinApiVersion", { infer: true }) || DEFAULT_LINKEDIN_API_VERSION,
             vanityName: organization.vanityName ?? null
           }
         };
@@ -296,7 +299,8 @@ export class LinkedInOAuthService {
   }
 
   private buildLinkedInHeaders(accessToken: string) {
-    const version = this.configService.get("linkedinApiVersion", { infer: true });
+    const version =
+      this.configService.get("linkedinApiVersion", { infer: true }) || DEFAULT_LINKEDIN_API_VERSION;
 
     return {
       Authorization: `Bearer ${accessToken}`,

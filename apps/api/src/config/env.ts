@@ -22,6 +22,8 @@ export interface AppEnv {
   telegramChatId: string;
 }
 
+export const DEFAULT_LINKEDIN_API_VERSION = "202604";
+
 const getRequiredEnv = (name: string): string => {
   const value = process.env[name];
 
@@ -47,7 +49,7 @@ export const getAppEnv = (): AppEnv => ({
   linkedinOrgClientId: process.env.LINKEDIN_ORG_CLIENT_ID ?? "",
   linkedinOrgClientSecret: process.env.LINKEDIN_ORG_CLIENT_SECRET ?? "",
   linkedinOrgRedirectUri: process.env.LINKEDIN_ORG_REDIRECT_URI ?? "",
-  linkedinApiVersion: process.env.LINKEDIN_API_VERSION ?? "",
+  linkedinApiVersion: process.env.LINKEDIN_API_VERSION || DEFAULT_LINKEDIN_API_VERSION,
   metaAppId: process.env.META_APP_ID ?? "",
   metaAppSecret: process.env.META_APP_SECRET ?? "",
   metaRedirectUri: process.env.META_REDIRECT_URI ?? "",

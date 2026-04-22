@@ -4,7 +4,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Cron } from "@nestjs/schedule";
 import { SocialProvider } from "@cast-loop/shared";
-import { AppEnv } from "../../config/env";
+import { AppEnv, DEFAULT_LINKEDIN_API_VERSION } from "../../config/env";
 import { SupabaseAdminService } from "../../database/supabase-admin.service";
 import { TokenCipherService } from "../../common/crypto/token-cipher.service";
 import { PostsService } from "../posts/posts.service";
@@ -410,7 +410,8 @@ export class PublishingService {
   }
 
   private buildLinkedInHeaders(accessToken: string, extraHeaders?: Record<string, string>) {
-    const version = this.configService.get("linkedinApiVersion", { infer: true });
+    const version =
+      this.configService.get("linkedinApiVersion", { infer: true }) || DEFAULT_LINKEDIN_API_VERSION;
 
     return {
       Authorization: `Bearer ${accessToken}`,

@@ -1,7 +1,8 @@
 import { Blob } from "node:buffer";
+import { DEFAULT_LINKEDIN_API_VERSION } from "../src/config/env";
 import { PublishingService } from "../src/modules/publishing/publishing.service";
 
-const buildService = (mode: "mock" | "live" = "live") => {
+const buildService = (mode: "mock" | "live" = "live", linkedinApiVersion = "202604") => {
   const postsService = {
     claimDuePosts: jest.fn(),
     getPublishingPayload: jest.fn(),
@@ -22,7 +23,7 @@ const buildService = (mode: "mock" | "live" = "live") => {
   const configService = {
     get: jest.fn((key: string) => {
       if (key === "socialPublishMode") return mode;
-      if (key === "linkedinApiVersion") return "202604";
+      if (key === "linkedinApiVersion") return linkedinApiVersion;
       return "";
     })
   };
@@ -227,6 +228,57 @@ describe("PublishingService", () => {
             altText: "Image de test"
           }
         }
+      })
+    );
+  });
+
+  it("falls back to the default LinkedIn API version when config is empty", async () => {
+    const { service, postsService } = buildService("live", "");
+    const fetchMock = jest.fn().mockResolvedValue(
+      new Response(null, {
+        status: 201,
+        headers: { "x-restli-id": "urn:li:share:789" }
+      })
+    );
+
+    global.fetch = fetchMock as typeof fetch;
+
+    postsService.getPublishingPayload.mockResolvedValue({
+      post: {
+        id: "post-3",
+        title: "Fallback version",
+        content: "Bonjour encore",
+        scheduledAt: null,
+        sendTelegramReminder: false,
+        storageBucket: null,
+        storagePath: null,
+        mimeType: null
+      },
+      targets: [
+        {
+          id: "target-3",
+          provider: "linkedin",
+          displayName: "John Doe",
+          handle: "@john",
+          accessTokenEncrypted: "enc:token-3",
+          publishCapability: "publishable",
+          accountType: "personal",
+          status: "pending",
+          metadata: {
+            linkedinPersonUrn: "urn:li:person:def456"
+          }
+        }
+      ]
+    });
+
+    await service.publishPost("post-3");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.linkedin.com/rest/posts",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "LinkedIn-Version": DEFAULT_LINKEDIN_API_VERSION
+        })
       })
     );
   });
