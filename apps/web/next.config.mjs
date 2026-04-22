@@ -31,7 +31,9 @@ if (envFilePath && typeof process.loadEnvFile === "function") {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  typedRoutes: true
+  typedRoutes: true,
+  output: "standalone",
+  outputFileTracingRoot: resolve(import.meta.dirname, "../..")
 };
 
 export default nextConfig;
