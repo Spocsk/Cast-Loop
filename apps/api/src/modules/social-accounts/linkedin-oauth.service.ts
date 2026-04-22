@@ -113,7 +113,7 @@ export class LinkedInOAuthService {
 
     url.searchParams.set("client_id", this.configService.get("linkedinOrgClientId", { infer: true }));
     url.searchParams.set("redirect_uri", this.configService.get("linkedinOrgRedirectUri", { infer: true }));
-    url.searchParams.set("scope", "rw_organization_admin");
+    url.searchParams.set("scope", "rw_organization_admin w_organization_social");
     return url.toString();
   }
 

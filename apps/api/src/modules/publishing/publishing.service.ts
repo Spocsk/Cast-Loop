@@ -10,6 +10,12 @@ import { TokenCipherService } from "../../common/crypto/token-cipher.service";
 import { PostsService } from "../posts/posts.service";
 import { TelegramNotifierService } from "./telegram-notifier.service";
 
+interface DownloadedMediaFile {
+  buffer: Buffer;
+  mimeType: string;
+  fileName: string;
+}
+
 @Injectable()
 export class PublishingService {
   private readonly logger = new Logger(PublishingService.name);
@@ -33,7 +39,7 @@ export class PublishingService {
 
   async publishPost(postId: string) {
     const payload = await this.postsService.getPublishingPayload(postId);
-    let media: { buffer: Buffer; mimeType: string; fileName: string } | null = null;
+    let media: DownloadedMediaFile | null = null;
 
     try {
       media =
@@ -83,7 +89,7 @@ export class PublishingService {
             accessToken,
             content: payload.post.content,
             title: payload.post.title,
-            media: media ? { mimeType: media.mimeType } : null,
+            media,
             metadata: target.metadata ?? {}
           });
 
@@ -121,7 +127,7 @@ export class PublishingService {
     accessToken: string | null;
     title: string;
     content: string;
-    media: { mimeType: string } | null;
+    media: DownloadedMediaFile | null;
     metadata: Record<string, unknown>;
   }) {
     const mode = this.configService.get("socialPublishMode", { infer: true });
@@ -142,13 +148,23 @@ export class PublishingService {
       throw new Error(`Missing access token for ${payload.provider}`);
     }
 
+    if (payload.provider === "linkedin") {
+      return this.publishLinkedInPost({
+        accessToken: payload.accessToken,
+        title: payload.title,
+        content: payload.content,
+        media: payload.media,
+        metadata: payload.metadata
+      });
+    }
+
     throw new Error(`Live publishing for ${payload.provider} is not implemented yet`);
   }
 
   private async sendTelegramReminder(
     payload: Awaited<ReturnType<PostsService["getPublishingPayload"]>>,
     connectOnlyTargets: Awaited<ReturnType<PostsService["getPublishingPayload"]>>["targets"],
-    media: { buffer: Buffer; mimeType: string; fileName: string } | null
+    media: DownloadedMediaFile | null
   ) {
     if (!payload.post.sendTelegramReminder) {
       return connectOnlyTargets.map((target) => ({
@@ -209,5 +225,240 @@ export class PublishingService {
       mimeType,
       fileName: basename(path)
     };
+  }
+
+  private async publishLinkedInPost(payload: {
+    accessToken: string;
+    title: string;
+    content: string;
+    media: DownloadedMediaFile | null;
+    metadata: Record<string, unknown>;
+  }) {
+    const authorUrn = this.resolveLinkedInAuthorUrn(payload.metadata);
+    const imageUrn = payload.media
+      ? await this.uploadLinkedInImage(payload.accessToken, authorUrn, payload.media)
+      : null;
+
+    const response = await fetch("https://api.linkedin.com/rest/posts", {
+      method: "POST",
+      headers: this.buildLinkedInHeaders(payload.accessToken, {
+        "Content-Type": "application/json"
+      }),
+      body: JSON.stringify({
+        author: authorUrn,
+        commentary: payload.content,
+        visibility: "PUBLIC",
+        distribution: {
+          feedDistribution: "MAIN_FEED",
+          targetEntities: [],
+          thirdPartyDistributionChannels: []
+        },
+        ...(imageUrn
+          ? {
+              content: {
+                media: {
+                  id: imageUrn,
+                  altText: this.buildLinkedInAltText(payload.title, payload.content)
+                }
+              }
+            }
+          : {}),
+        lifecycleState: "PUBLISHED",
+        isReshareDisabledByAuthor: false
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(await this.readLinkedInError(response));
+    }
+
+    const externalPostId = response.headers.get("x-restli-id");
+
+    return {
+      externalPostId: externalPostId ?? `linkedin-${Date.now()}`,
+      responsePayload: {
+        mode: "live",
+        author: authorUrn,
+        imageUrn,
+        hasMedia: Boolean(imageUrn)
+      }
+    };
+  }
+
+  private resolveLinkedInAuthorUrn(metadata: Record<string, unknown>) {
+    const organizationUrn = this.readMetadataString(metadata, "linkedinOrganizationUrn");
+
+    if (organizationUrn) {
+      return organizationUrn;
+    }
+
+    const organizationId = this.readMetadataString(metadata, "linkedinOrganizationId");
+
+    if (organizationId) {
+      return `urn:li:organization:${organizationId}`;
+    }
+
+    const personUrn = this.readMetadataString(metadata, "linkedinPersonUrn");
+
+    if (personUrn) {
+      return personUrn;
+    }
+
+    const personId = this.readMetadataString(metadata, "linkedinPersonId");
+
+    if (personId) {
+      return `urn:li:person:${personId}`;
+    }
+
+    throw new Error("Missing LinkedIn author metadata");
+  }
+
+  private async uploadLinkedInImage(
+    accessToken: string,
+    ownerUrn: string,
+    media: DownloadedMediaFile
+  ) {
+    if (!media.mimeType.startsWith("image/")) {
+      throw new Error(`LinkedIn publishing only supports images for now (received ${media.mimeType})`);
+    }
+
+    const initializeResponse = await fetch("https://api.linkedin.com/rest/images?action=initializeUpload", {
+      method: "POST",
+      headers: this.buildLinkedInHeaders(accessToken, {
+        "Content-Type": "application/json"
+      }),
+      body: JSON.stringify({
+        initializeUploadRequest: {
+          owner: ownerUrn
+        }
+      })
+    });
+
+    if (!initializeResponse.ok) {
+      throw new Error(await this.readLinkedInError(initializeResponse));
+    }
+
+    const initializePayload = (await initializeResponse.json()) as {
+      value?: {
+        uploadUrl?: string;
+        image?: string;
+      };
+    };
+
+    const uploadUrl = initializePayload.value?.uploadUrl;
+    const imageUrn = initializePayload.value?.image;
+
+    if (!uploadUrl || !imageUrn) {
+      throw new Error("LinkedIn image upload initialization returned an incomplete response");
+    }
+
+    await this.uploadLinkedInBinary(uploadUrl, media);
+    await this.waitForLinkedInImageAvailability(accessToken, imageUrn);
+
+    return imageUrn;
+  }
+
+  private async uploadLinkedInBinary(uploadUrl: string, media: DownloadedMediaFile) {
+    let lastErrorMessage = "Unable to upload image to LinkedIn";
+
+    for (const method of ["PUT", "POST"] as const) {
+      const response = await fetch(uploadUrl, {
+        method,
+        headers: {
+          "Content-Type": media.mimeType,
+          "Content-Length": String(media.buffer.byteLength)
+        },
+        body: new Uint8Array(media.buffer)
+      });
+
+      if (response.ok) {
+        return;
+      }
+
+      lastErrorMessage = await this.readLinkedInError(response);
+
+      if (response.status !== 405) {
+        break;
+      }
+    }
+
+    throw new Error(lastErrorMessage);
+  }
+
+  private async waitForLinkedInImageAvailability(accessToken: string, imageUrn: string) {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const response = await fetch(`https://api.linkedin.com/rest/images/${encodeURIComponent(imageUrn)}`, {
+        headers: this.buildLinkedInHeaders(accessToken)
+      });
+
+      if (!response.ok) {
+        throw new Error(await this.readLinkedInError(response));
+      }
+
+      const payload = (await response.json()) as {
+        status?: string;
+      };
+
+      if (payload.status === "AVAILABLE") {
+        return;
+      }
+
+      await this.sleep(1000);
+    }
+
+    throw new Error(`LinkedIn image ${imageUrn} is not available yet`);
+  }
+
+  private buildLinkedInHeaders(accessToken: string, extraHeaders?: Record<string, string>) {
+    const version = this.configService.get("linkedinApiVersion", { infer: true });
+
+    return {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+      "X-Restli-Protocol-Version": "2.0.0",
+      ...(version ? { "Linkedin-Version": version } : {}),
+      ...(extraHeaders ?? {})
+    };
+  }
+
+  private buildLinkedInAltText(title: string, content: string) {
+    const candidate = title.trim() || content.trim();
+
+    if (!candidate) {
+      return "Image publiee depuis Cast Loop";
+    }
+
+    return candidate.slice(0, 4086);
+  }
+
+  private readMetadataString(metadata: Record<string, unknown>, key: string) {
+    const value = metadata[key];
+
+    return typeof value === "string" && value.trim().length > 0 ? value : null;
+  }
+
+  private async readLinkedInError(response: Response) {
+    const text = await response.text();
+
+    try {
+      const payload = JSON.parse(text) as {
+        message?: string;
+        error?: string;
+        error_description?: string;
+      };
+
+      return (
+        payload.message ??
+        payload.error_description ??
+        payload.error ??
+        (text || `LinkedIn request failed with status ${response.status}`)
+      );
+    } catch {
+      return text || `LinkedIn request failed with status ${response.status}`;
+    }
+  }
+
+  private sleep(durationMs: number) {
+    return new Promise((resolve) => setTimeout(resolve, durationMs));
   }
 }
