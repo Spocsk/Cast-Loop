@@ -165,8 +165,20 @@ export default function DashboardPage() {
         />
       </section>
 
-      <CalendarBoard items={snapshot.calendarItems} />
-      <PostsTable items={snapshot.posts} onRefresh={loadSnapshot} />
+      <CalendarBoard
+        items={snapshot.calendarItems}
+        maxItems={2}
+        browseHref="/calendar"
+        browseLabel="Ouvrir le calendrier"
+        showViewModes={false}
+      />
+      <PostsTable
+        items={snapshot.posts}
+        onRefresh={loadSnapshot}
+        maxItems={3}
+        browseHref="/posts"
+        browseLabel="Voir la page posts"
+      />
     </div>
   );
 }

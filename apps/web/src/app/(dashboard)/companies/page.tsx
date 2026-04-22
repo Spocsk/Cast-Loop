@@ -128,17 +128,17 @@ export default function CompaniesPage() {
                   </p>
                 </div>
 
-                <div className="company-cell">
+                <div className="company-cell company-cell-slug">
                   <span className="company-card-label eyebrow">Slug</span>
                   <strong className="company-inline-value">{organization.slug}</strong>
                 </div>
 
-                <div className="company-cell">
+                <div className="company-cell company-cell-role">
                   <span className="company-card-label eyebrow">Rôle</span>
                   <span className="provider-pill company-role-pill">{organization.role}</span>
                 </div>
 
-                <div className="company-cell">
+                <div className="company-cell company-cell-status">
                   <span className="company-card-label eyebrow">Statut</span>
                   <span
                     className={`status ${
@@ -234,6 +234,13 @@ export default function CompaniesPage() {
                         : pendingOrganizationId === organization.id
                           ? "Activation en cours"
                           : "Activer"}
+                    </span>
+                    <span className="company-action-button-copy" aria-hidden="true">
+                      {organization.id === activeOrganizationId
+                        ? "Entreprise active"
+                        : pendingOrganizationId === organization.id
+                          ? "Activation…"
+                          : "Activer l'entreprise"}
                     </span>
                   </button>
                 </div>

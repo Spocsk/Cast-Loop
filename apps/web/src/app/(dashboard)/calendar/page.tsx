@@ -83,7 +83,7 @@ export default function CalendarPage() {
         <OrganizationScope />
       </header>
       {items.length > 0 ? (
-        <CalendarBoard items={items} />
+        <CalendarBoard items={items} showViewModes />
       ) : (
         <DataState
           eyebrow="Calendrier"

@@ -2,6 +2,7 @@
 
 import { CalendarPostItem } from "@cast-loop/shared";
 import type { Route } from "next";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Dropdown } from "../ui/dropdown";
@@ -9,9 +10,32 @@ import { EmptyState } from "../ui/empty-state";
 import { InboxIcon } from "../ui/icons";
 import { ProviderPill } from "../ui/provider-pill";
 
-export function CalendarBoard({ items }: { items: CalendarPostItem[] }) {
+interface CalendarBoardProps {
+  items: CalendarPostItem[];
+  maxItems?: number;
+  browseHref?: Route;
+  browseLabel?: string;
+  showViewModes?: boolean;
+}
+
+const CALENDAR_VIEW_MODES = [
+  { value: "month", label: "Mois", hint: "Panorama éditorial" },
+  { value: "week", label: "Semaine", hint: "Fenêtre resserrée" },
+  { value: "day", label: "Jour", hint: "Focus opérationnel" }
+] as const;
+
+export function CalendarBoard({
+  items,
+  maxItems,
+  browseHref,
+  browseLabel,
+  showViewModes = true
+}: CalendarBoardProps) {
   const router = useRouter();
-  const [view, setView] = useState("month");
+  const [view, setView] = useState<(typeof CALENDAR_VIEW_MODES)[number]["value"]>("month");
+  const visibleItems = typeof maxItems === "number" ? items.slice(0, maxItems) : items;
+  const hiddenItemsCount = Math.max(items.length - visibleItems.length, 0);
+  const activeView = CALENDAR_VIEW_MODES.find((mode) => mode.value === view) ?? CALENDAR_VIEW_MODES[0];
 
   return (
     <div className="panel timeline-panel">
@@ -20,23 +44,34 @@ export function CalendarBoard({ items }: { items: CalendarPostItem[] }) {
           <span className="eyebrow">Calendrier</span>
           <h2>Prochaines publications</h2>
         </div>
-        <div className="timeline-view-control">
-          <Dropdown
-            options={[
-              { value: "month", label: "Vue mensuelle", hint: "Panorama éditorial" },
-              { value: "week", label: "Vue hebdomadaire", hint: "Prochaines échéances" },
-              { value: "day", label: "Vue quotidienne", hint: "Focus opérationnel" }
-            ]}
-            value={view}
-            onChange={setView}
-            label="Choisir une vue du calendrier"
-          />
+        <div className="section-heading-actions">
+          {showViewModes ? (
+            <div className="timeline-view-control">
+              <Dropdown
+                options={CALENDAR_VIEW_MODES.map((mode) => ({
+                  value: mode.value,
+                  label: mode.label,
+                  hint: mode.hint
+                }))}
+                value={view}
+                onChange={(nextValue) => setView(nextValue as (typeof CALENDAR_VIEW_MODES)[number]["value"])}
+                label="Choisir une vue du calendrier"
+              />
+            </div>
+          ) : null}
+          {browseHref ? (
+            <Link href={browseHref} className="section-link-subtle">
+              {browseLabel ?? "Voir tout"}
+              {hiddenItemsCount > 0 ? ` (${hiddenItemsCount} de plus)` : ""}
+            </Link>
+          ) : null}
         </div>
       </div>
+      {showViewModes ? <p className="timeline-view-caption">{activeView.hint}</p> : null}
 
-      <div className="timeline">
-        {items.length > 0 ? (
-          items.map((item) => {
+      <div className={`timeline timeline-view-${view}`}>
+        {visibleItems.length > 0 ? (
+          visibleItems.map((item) => {
             const providers = Array.isArray(item.providers) ? item.providers : [];
 
             return (

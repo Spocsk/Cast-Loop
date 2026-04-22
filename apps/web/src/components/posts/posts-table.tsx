@@ -1,6 +1,8 @@
 "use client";
 
 import { PostSummary, PostVisibility } from "@cast-loop/shared";
+import type { Route } from "next";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSessionContext } from "@/components/providers/session-provider";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -21,6 +23,9 @@ interface PostsTableProps {
   selectedPostId?: string | null;
   onPostDetailsOpen?: (postId: string) => void;
   onPostDetailsClose?: () => void;
+  maxItems?: number;
+  browseHref?: Route;
+  browseLabel?: string;
 }
 
 export function PostsTable({
@@ -31,7 +36,10 @@ export function PostsTable({
   onVisibilityChange,
   selectedPostId = null,
   onPostDetailsOpen,
-  onPostDetailsClose
+  onPostDetailsClose,
+  maxItems,
+  browseHref,
+  browseLabel
 }: PostsTableProps) {
   const { accessToken, activeOrganizationId } = useSessionContext();
   const toast = useToast();
@@ -44,6 +52,8 @@ export function PostsTable({
     kind: "archive" | "delete";
     postId: string;
   } | null>(null);
+  const visibleItems = typeof maxItems === "number" ? items.slice(0, maxItems) : items;
+  const hiddenItemsCount = Math.max(items.length - visibleItems.length, 0);
 
   const openCreateDialog = () => {
     setEditingPost(null);
@@ -149,13 +159,21 @@ export function PostsTable({
           <span className="eyebrow">Posts</span>
           <h2>Pipeline éditorial</h2>
         </div>
-        <button
-          className="secondary-button secondary-button-action"
-          type="button"
-          onClick={openCreateDialog}
-        >
-          Nouveau draft
-        </button>
+        <div className="section-heading-actions">
+          <button
+            className="secondary-button secondary-button-action"
+            type="button"
+            onClick={openCreateDialog}
+          >
+            Nouveau draft
+          </button>
+          {browseHref ? (
+            <Link href={browseHref} className="section-link-subtle">
+              {browseLabel ?? "Voir tous les posts"}
+              {hiddenItemsCount > 0 ? ` (${hiddenItemsCount} de plus)` : ""}
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       {manageMode ? (
@@ -180,8 +198,8 @@ export function PostsTable({
       {actionError ? <p className="posts-feedback-error">{actionError}</p> : null}
 
       <div className="table-list posts-table-list">
-        {items.length > 0 ? (
-          items.map((post) => (
+        {visibleItems.length > 0 ? (
+          visibleItems.map((post) => (
             <article
               key={post.id}
               className={
@@ -199,18 +217,18 @@ export function PostsTable({
                 }
               }}
             >
-              <div>
-                <strong>{post.title}</strong>
-                <p>{post.content}</p>
+              <div className="post-row-summary">
+                <strong className="post-row-title">{post.title}</strong>
+                <p className="post-row-excerpt">{post.content}</p>
               </div>
-              <div>
+              <div className="post-row-status">
                 <span className={`status status-${post.state}`}>{post.state}</span>
               </div>
-              <div>
+              <div className="post-row-targets">
                 <strong>{post.targetCount}</strong>
                 <p>cibles</p>
               </div>
-              <div>
+              <div className="post-row-date">
                 <strong>{formatPostDate(post)}</strong>
               </div>
               {manageMode ? (

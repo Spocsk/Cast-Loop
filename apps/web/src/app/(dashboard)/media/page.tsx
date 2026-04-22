@@ -2,29 +2,30 @@
 
 import { MediaAssetSummary } from "@cast-loop/shared";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSessionContext } from "@/components/providers/session-provider";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataState } from "@/components/ui/data-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { GridIcon, ImageIcon, ListIcon } from "@/components/ui/icons";
 import { OrganizationScope } from "@/components/ui/organization-scope";
-import { fetchMediaAssets, fetchMediaAssetViewUrl } from "@/lib/api";
+import { useToast } from "@/components/ui/toast-provider";
+import { deleteMediaAsset, fetchMediaAssets, fetchMediaAssetViewUrl } from "@/lib/api";
 
 type MediaViewMode = "grid" | "list";
 
 export default function MediaPage() {
   const { accessToken, activeOrganizationId, status } = useSessionContext();
+  const toast = useToast();
   const [assets, setAssets] = useState<MediaAssetSummary[]>([]);
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<MediaViewMode>("grid");
+  const [pendingAssetId, setPendingAssetId] = useState<string | null>(null);
+  const [confirmAsset, setConfirmAsset] = useState<MediaAssetSummary | null>(null);
 
-  useEffect(() => {
-    if (status !== "authenticated") {
-      return;
-    }
-
+  const loadAssets = useCallback(async () => {
     if (!accessToken || !activeOrganizationId) {
       setAssets([]);
       setError(null);
@@ -32,28 +33,26 @@ export default function MediaPage() {
       return;
     }
 
-    let active = true;
     setIsLoading(true);
     setError(null);
 
-    void fetchMediaAssets(accessToken, activeOrganizationId)
-      .then((nextAssets) => {
-        if (!active) return;
-        setAssets(nextAssets);
-      })
-      .catch((nextError) => {
-        if (!active) return;
-        setError(nextError instanceof Error ? nextError.message : "Impossible de charger les medias.");
-      })
-      .finally(() => {
-        if (!active) return;
-        setIsLoading(false);
-      });
+    try {
+      const nextAssets = await fetchMediaAssets(accessToken, activeOrganizationId);
+      setAssets(nextAssets);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Impossible de charger les medias.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [accessToken, activeOrganizationId]);
 
-    return () => {
-      active = false;
-    };
-  }, [accessToken, activeOrganizationId, status]);
+  useEffect(() => {
+    if (status !== "authenticated") {
+      return;
+    }
+
+    void loadAssets();
+  }, [loadAssets, status]);
 
   useEffect(() => {
     if (
@@ -141,6 +140,30 @@ export default function MediaPage() {
     );
   }
 
+  const handleDeleteAsset = async (asset: MediaAssetSummary) => {
+    if (!accessToken || !activeOrganizationId) {
+      return;
+    }
+
+    setPendingAssetId(asset.id);
+
+    try {
+      await deleteMediaAsset(accessToken, activeOrganizationId, asset.id);
+      setAssets((currentAssets) => currentAssets.filter((currentAsset) => currentAsset.id !== asset.id));
+      setAssetUrls((currentUrls) => {
+        const nextUrls = { ...currentUrls };
+        delete nextUrls[asset.id];
+        return nextUrls;
+      });
+      toast.success(`${extractFileName(asset.storagePath)} a été supprimé.`);
+    } catch (nextError) {
+      toast.error(nextError instanceof Error ? nextError.message : "Impossible de supprimer ce média.");
+    } finally {
+      setPendingAssetId(null);
+      setConfirmAsset(null);
+    }
+  };
+
   return (
     <div className="page-stack media-page">
       <header className="page-header page-header-with-action">
@@ -197,10 +220,40 @@ export default function MediaPage() {
               <p className="muted">
                 {asset.mimeType} · {formatFileSize(asset.fileSizeBytes)}
               </p>
+              <div className="media-card-actions">
+                <button
+                  type="button"
+                  className="secondary-button secondary-button-action media-card-delete-button"
+                  onClick={() => setConfirmAsset(asset)}
+                  disabled={pendingAssetId === asset.id}
+                >
+                  {pendingAssetId === asset.id ? "Suppression…" : "Supprimer"}
+                </button>
+              </div>
             </div>
           </article>
         ))}
       </section>
+      <ConfirmDialog
+        open={confirmAsset !== null}
+        title="Supprimer ce média ?"
+        description={
+          confirmAsset
+            ? `Le média ${extractFileName(confirmAsset.storagePath)} sera retiré de la bibliothèque de l'organisation active.`
+            : ""
+        }
+        tone="danger"
+        confirmLabel="Supprimer"
+        busy={Boolean(confirmAsset && pendingAssetId === confirmAsset.id)}
+        onCancel={() => setConfirmAsset(null)}
+        onConfirm={() => {
+          if (!confirmAsset) {
+            return;
+          }
+
+          void handleDeleteAsset(confirmAsset);
+        }}
+      />
     </div>
   );
 }

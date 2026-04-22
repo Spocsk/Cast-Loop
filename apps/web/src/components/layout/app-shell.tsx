@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 import type { Route } from "next";
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useSessionContext } from "@/components/providers/session-provider";
 import { Dropdown } from "@/components/ui/dropdown";
 import { Spinner } from "@/components/ui/spinner";
@@ -30,6 +30,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const toast = useToast();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isSwitchingOrganization, setIsSwitchingOrganization] = useState(false);
+  const mobileBarRef = useRef<HTMLDivElement | null>(null);
+  const [mobilePanelTop, setMobilePanelTop] = useState(88);
 
   const userDisplayName = useMemo(() => {
     if (!user) return null;
@@ -60,6 +62,42 @@ export function AppShell({ children }: { children: ReactNode }) {
     setIsMobileNavOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    const updateMobilePanelTop = () => {
+      const nextTop = mobileBarRef.current?.getBoundingClientRect().bottom;
+
+      if (!nextTop) {
+        return;
+      }
+
+      setMobilePanelTop(Math.round(nextTop + 12));
+    };
+
+    updateMobilePanelTop();
+    window.addEventListener("resize", updateMobilePanelTop);
+    window.addEventListener("scroll", updateMobilePanelTop, { passive: true });
+    window.visualViewport?.addEventListener("resize", updateMobilePanelTop);
+
+    return () => {
+      window.removeEventListener("resize", updateMobilePanelTop);
+      window.removeEventListener("scroll", updateMobilePanelTop);
+      window.visualViewport?.removeEventListener("resize", updateMobilePanelTop);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileNavOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileNavOpen]);
+
   const handleSignOut = async () => {
     await signOut();
     setIsMobileNavOpen(false);
@@ -86,9 +124,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className={`app-shell ${isMobileNavOpen ? "nav-open" : ""}`}>
+    <div
+      className={`app-shell ${isMobileNavOpen ? "nav-open" : ""}`}
+      style={{ ["--mobile-sidebar-panel-top" as string]: `${mobilePanelTop}px` }}
+    >
       <aside className={`sidebar ${isMobileNavOpen ? "sidebar-open" : ""}`}>
-        <div className="sidebar-mobile-bar">
+        <div ref={mobileBarRef} className="sidebar-mobile-bar">
           <div className="sidebar-brand">
             <Image
               src="/assets/cast-loop-logo-white.png"
