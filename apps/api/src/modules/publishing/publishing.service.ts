@@ -416,7 +416,7 @@ export class PublishingService {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
       "X-Restli-Protocol-Version": "2.0.0",
-      ...(version ? { "Linkedin-Version": version } : {}),
+      ...(version ? { "LinkedIn-Version": version } : {}),
       ...(extraHeaders ?? {})
     };
   }

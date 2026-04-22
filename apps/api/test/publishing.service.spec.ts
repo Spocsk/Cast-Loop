@@ -104,7 +104,7 @@ describe("PublishingService", () => {
         method: "POST",
         headers: expect.objectContaining({
           Authorization: "Bearer token-1",
-          "Linkedin-Version": "202604"
+          "LinkedIn-Version": "202604"
         }),
         body: expect.any(String)
       })
