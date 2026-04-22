@@ -21,6 +21,7 @@ import { DatabaseModule } from "./database/database.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { CalendarModule } from "./modules/calendar/calendar.module";
+import { HealthModule } from "./modules/health/health.module";
 import { MediaModule } from "./modules/media/media.module";
 import { OrganizationsModule } from "./modules/organizations/organizations.module";
 import { PostsModule } from "./modules/posts/posts.module";
@@ -39,6 +40,7 @@ import { SocialAccountsModule } from "./modules/social-accounts/social-accounts.
     DatabaseModule,
     AuditModule,
     AuthModule,
+    HealthModule,
     OrganizationsModule,
     SocialAccountsModule,
     MediaModule,
