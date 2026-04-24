@@ -69,7 +69,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </SessionProvider>
         </ThemeProvider>
         <Script
-          src="http://umami-e107qp3wextcfcnfrubwefxr.178.104.172.67.sslip.io/script.js"
+          src="https://analytics.dylan-cdo.fr/script.js"
           data-website-id="ce7e2c22-ea22-4be6-a0af-63e29ebb4612"
           strategy="afterInteractive"
         />
