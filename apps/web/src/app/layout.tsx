@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import { SessionProvider } from "@/components/providers/session-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ToastProvider } from "@/components/ui/toast-provider";
@@ -67,6 +68,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <ToastProvider>{children}</ToastProvider>
           </SessionProvider>
         </ThemeProvider>
+        <Script
+          src="http://umami-e107qp3wextcfcnfrubwefxr.178.104.172.67.sslip.io/script.js"
+          data-website-id="ce7e2c22-ea22-4be6-a0af-63e29ebb4612"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
