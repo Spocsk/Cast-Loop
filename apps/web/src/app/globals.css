@@ -862,10 +862,14 @@ input {
 
 .section-heading-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
   align-items: center;
   gap: 0.55rem 0.9rem;
+}
+
+.section-heading-actions .secondary-button-action {
+  white-space: nowrap;
 }
 
 .section-link-subtle {
@@ -883,7 +887,7 @@ input {
   transform: translateY(-1px);
 }
 
-.section-heading > div {
+.section-heading > div:not(.section-heading-actions) {
   display: grid;
   gap: 0.35rem;
 }
@@ -2096,6 +2100,93 @@ input {
   width: 1rem;
   height: 1rem;
   flex: none;
+}
+
+.import-posts-dialog {
+  gap: var(--space-5);
+}
+
+.import-posts-layout {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.import-posts-dropzone {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  cursor: pointer;
+}
+
+.import-posts-dropzone input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.import-posts-dropzone strong {
+  color: var(--ink);
+}
+
+.import-posts-dropzone span,
+.import-posts-format p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.import-posts-format {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.import-posts-format code {
+  display: block;
+  padding: 0.75rem 0.85rem;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.import-posts-errors {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid rgba(179, 38, 30, 0.28);
+  border-radius: var(--radius-md);
+  background: var(--surface-danger-soft);
+  color: var(--danger);
+}
+
+.import-posts-errors ul {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.import-posts-errors li {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: 0.88rem;
+}
+
+.import-posts-errors code {
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-xs);
+  background: rgba(179, 38, 30, 0.08);
+  color: var(--danger);
 }
 
 /* ─── Focus-visible ring (unifié sur tous les boutons interactifs) ─── */
@@ -3313,7 +3404,12 @@ input {
   }
 
   .section-heading-actions {
-    justify-content: flex-start;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .section-heading-actions .secondary-button-action {
+    flex: 0 1 auto;
   }
 
   .section-link-subtle {

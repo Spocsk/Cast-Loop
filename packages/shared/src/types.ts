@@ -173,6 +173,31 @@ export interface CreatePostResult {
   sendTelegramReminder: boolean;
 }
 
+export interface ImportPostItemInput {
+  title: string;
+  content: string;
+  primaryMediaAssetId?: string;
+  targetSocialAccountIds?: string[];
+  scheduledAt?: string;
+  sendTelegramReminder?: boolean;
+}
+
+export interface ImportPostsInput {
+  organizationId: string;
+  posts: ImportPostItemInput[];
+}
+
+export interface ImportPostError {
+  row: number;
+  field: keyof ImportPostItemInput | "posts";
+  message: string;
+}
+
+export interface ImportPostsResult {
+  createdCount: number;
+  posts: CreatePostResult[];
+}
+
 export interface UpdatePostInput {
   organizationId: string;
   title: string;
