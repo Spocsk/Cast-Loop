@@ -1,4 +1,5 @@
 import {
+  ApiVersionResult,
   CalendarPostItem,
   CreateOrganizationInput,
   CreateOrganizationResult,
@@ -153,6 +154,10 @@ export async function sendTelegramTestMessage(accessToken: string, payload: Send
     method: "POST",
     body: JSON.stringify(payload)
   });
+}
+
+export async function fetchApiVersion(accessToken: string) {
+  return apiRequest<ApiVersionResult>("/settings/version", accessToken);
 }
 
 export async function fetchPosts(

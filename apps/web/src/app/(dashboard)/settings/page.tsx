@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSessionContext } from "@/components/providers/session-provider";
 import { Spinner } from "@/components/ui/spinner";
 import { ThemeSwitcher } from "@/components/ui/theme-switcher";
 import { useToast } from "@/components/ui/toast-provider";
-import { sendTelegramTestMessage } from "@/lib/api";
+import { fetchApiVersion, sendTelegramTestMessage } from "@/lib/api";
 import { hasSupabaseClientEnv, webEnv } from "@/lib/env";
+import webPackageJson from "../../../../package.json";
 
 const formatTimestamp = (value: string) =>
   new Intl.DateTimeFormat("fr-FR", {
@@ -19,6 +20,34 @@ export default function SettingsPage() {
   const toast = useToast();
   const [isSendingTelegramTest, setIsSendingTelegramTest] = useState(false);
   const [lastTelegramTestSentAt, setLastTelegramTestSentAt] = useState<string | null>(null);
+  const [apiVersion, setApiVersion] = useState<string | null>(null);
+  const [apiVersionError, setApiVersionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setApiVersion(null);
+      setApiVersionError(null);
+      return;
+    }
+
+    let active = true;
+    setApiVersionError(null);
+
+    void fetchApiVersion(accessToken)
+      .then((result) => {
+        if (!active) return;
+        setApiVersion(result.apiVersion);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setApiVersion(null);
+        setApiVersionError(error instanceof Error ? error.message : "Version API indisponible.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accessToken]);
 
   const handleSendTelegramTest = async () => {
     if (!accessToken || !activeOrganizationId) {
@@ -67,6 +96,13 @@ export default function SettingsPage() {
           <span className="eyebrow">API Nest</span>
           <strong>{webEnv.apiUrl}</strong>
           <p className="muted">URL publique de l'API</p>
+        </article>
+
+        <article className="panel">
+          <span className="eyebrow">Versions</span>
+          <strong>Front v{webPackageJson.version}</strong>
+          <p>Back {apiVersion ? `v${apiVersion}` : "chargement..."}</p>
+          {apiVersionError ? <p className="social-feedback social-feedback-warning">{apiVersionError}</p> : null}
         </article>
 
         <article className="panel social-provider-panel">

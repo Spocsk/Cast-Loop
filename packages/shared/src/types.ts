@@ -91,6 +91,10 @@ export interface SendTelegramTestMessageResult {
   sentAt: string;
 }
 
+export interface ApiVersionResult {
+  apiVersion: string;
+}
+
 export interface SocialAccountSummary {
   id: string;
   organizationId: string;

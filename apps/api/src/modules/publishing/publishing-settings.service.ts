@@ -1,8 +1,9 @@
 import { BadGatewayException, BadRequestException, Injectable } from "@nestjs/common";
-import { SendTelegramTestMessageResult } from "@cast-loop/shared";
+import { ApiVersionResult, SendTelegramTestMessageResult } from "@cast-loop/shared";
 import { DatabaseService } from "../../database/database.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { TelegramNotifierService } from "./telegram-notifier.service";
+import apiPackageJson from "../../../package.json";
 
 @Injectable()
 export class PublishingSettingsService {
@@ -11,6 +12,12 @@ export class PublishingSettingsService {
     private readonly organizationsService: OrganizationsService,
     private readonly telegramNotifierService: TelegramNotifierService
   ) {}
+
+  getApiVersion(): ApiVersionResult {
+    return {
+      apiVersion: apiPackageJson.version
+    };
+  }
 
   async sendTelegramTestMessage(
     userId: string,
