@@ -207,6 +207,7 @@ POST   /media/upload-url
 
 GET    /posts
 POST   /posts
+POST   /posts/import
 PATCH  /posts/:id
 POST   /posts/:id/schedule
 POST   /posts/:id/publish-now

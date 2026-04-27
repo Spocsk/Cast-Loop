@@ -1,4 +1,5 @@
 import {
+  ApiVersionResult,
   CalendarPostItem,
   CreateOrganizationInput,
   CreateOrganizationResult,
@@ -7,6 +8,9 @@ import {
   DeleteMediaAssetResult,
   CreatePostInput,
   CreatePostResult,
+  ImportPostError,
+  ImportPostsInput,
+  ImportPostsResult,
   MediaAssetViewUrlResult,
   OrganizationSummary,
   PostVisibility,
@@ -51,6 +55,16 @@ export interface PendingSocialAccountSelection {
     accountType: string;
     publishCapability: string;
   }>;
+}
+
+export class ImportPostsApiError extends Error {
+  constructor(
+    message: string,
+    readonly errors: ImportPostError[]
+  ) {
+    super(message);
+    this.name = "ImportPostsApiError";
+  }
 }
 
 const buildApiUrl = (path: string, searchParams?: URLSearchParams) => {
@@ -140,6 +154,10 @@ export async function sendTelegramTestMessage(accessToken: string, payload: Send
     method: "POST",
     body: JSON.stringify(payload)
   });
+}
+
+export async function fetchApiVersion(accessToken: string) {
+  return apiRequest<ApiVersionResult>("/settings/version", accessToken);
 }
 
 export async function fetchPosts(
@@ -263,6 +281,48 @@ export async function createPost(accessToken: string, payload: CreatePostInput) 
     method: "POST",
     body: JSON.stringify(payload)
   });
+}
+
+export async function importPosts(accessToken: string, payload: ImportPostsInput) {
+  const response = await fetch(buildApiUrl("/posts/import"), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    let message = `Requete API en echec (${response.status})`;
+    let errors: ImportPostError[] = [];
+    const responseText = await response.text();
+
+    try {
+      const payload = JSON.parse(responseText) as {
+        message?: string | string[];
+        errors?: ImportPostError[];
+      };
+
+      if (Array.isArray(payload.message)) {
+        message = payload.message.join(", ");
+      } else if (payload.message) {
+        message = payload.message;
+      }
+
+      if (Array.isArray(payload.errors)) {
+        errors = payload.errors;
+      }
+    } catch {
+      if (responseText) {
+        message = responseText;
+      }
+    }
+
+    throw new ImportPostsApiError(message, errors);
+  }
+
+  return (await response.json()) as ImportPostsResult;
 }
 
 export async function updatePost(accessToken: string, postId: string, payload: UpdatePostInput) {

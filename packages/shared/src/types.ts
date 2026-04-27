@@ -91,6 +91,10 @@ export interface SendTelegramTestMessageResult {
   sentAt: string;
 }
 
+export interface ApiVersionResult {
+  apiVersion: string;
+}
+
 export interface SocialAccountSummary {
   id: string;
   organizationId: string;
@@ -171,6 +175,31 @@ export interface CreatePostResult {
   scheduledAt: string | null;
   state: PostState;
   sendTelegramReminder: boolean;
+}
+
+export interface ImportPostItemInput {
+  title: string;
+  content: string;
+  primaryMediaAssetId?: string;
+  targetSocialAccountIds?: string[];
+  scheduledAt?: string;
+  sendTelegramReminder?: boolean;
+}
+
+export interface ImportPostsInput {
+  organizationId: string;
+  posts: ImportPostItemInput[];
+}
+
+export interface ImportPostError {
+  row: number;
+  field: keyof ImportPostItemInput | "posts";
+  message: string;
+}
+
+export interface ImportPostsResult {
+  createdCount: number;
+  posts: CreatePostResult[];
 }
 
 export interface UpdatePostInput {

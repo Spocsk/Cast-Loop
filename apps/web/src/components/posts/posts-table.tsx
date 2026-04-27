@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/toast-provider";
 import { archivePost, deletePost, restorePost } from "@/lib/api";
 import { CreatePostDialog } from "./create-post-dialog";
+import { ImportPostsDialog } from "./import-posts-dialog";
 import { PostDetailsDialog } from "./post-details-dialog";
 
 interface PostsTableProps {
@@ -44,6 +45,7 @@ export function PostsTable({
   const { accessToken, activeOrganizationId } = useSessionContext();
   const toast = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<PostSummary | null>(null);
   const [selectedPost, setSelectedPost] = useState<PostSummary | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -59,6 +61,11 @@ export function PostsTable({
     setEditingPost(null);
     setActionError(null);
     setIsDialogOpen(true);
+  };
+
+  const openImportDialog = () => {
+    setActionError(null);
+    setIsImportDialogOpen(true);
   };
 
   const openEditDialog = (post: PostSummary) => {
@@ -160,6 +167,15 @@ export function PostsTable({
           <h2>Pipeline éditorial</h2>
         </div>
         <div className="section-heading-actions">
+          {manageMode && visibility === "active" ? (
+            <button
+              className="secondary-button secondary-button-action"
+              type="button"
+              onClick={openImportDialog}
+            >
+              Importer
+            </button>
+          ) : null}
           <button
             className="secondary-button secondary-button-action"
             type="button"
@@ -180,14 +196,22 @@ export function PostsTable({
         <div className="posts-visibility-tabs" role="tablist" aria-label="Filtres des posts">
           <button
             type="button"
-            className={visibility === "active" ? "posts-visibility-tab posts-visibility-tab-active" : "posts-visibility-tab"}
+            className={
+              visibility === "active"
+                ? "posts-visibility-tab posts-visibility-tab-active"
+                : "posts-visibility-tab"
+            }
             onClick={() => onVisibilityChange?.("active")}
           >
             Actifs
           </button>
           <button
             type="button"
-            className={visibility === "archived" ? "posts-visibility-tab posts-visibility-tab-active" : "posts-visibility-tab"}
+            className={
+              visibility === "archived"
+                ? "posts-visibility-tab posts-visibility-tab-active"
+                : "posts-visibility-tab"
+            }
             onClick={() => onVisibilityChange?.("archived")}
           >
             Archives
@@ -320,13 +344,22 @@ export function PostsTable({
             }
             actions={
               visibility === "active" ? (
-                <button
-                  type="button"
-                  className="secondary-button secondary-button-action"
-                  onClick={openCreateDialog}
-                >
-                  Nouveau brouillon
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="secondary-button secondary-button-action"
+                    onClick={openImportDialog}
+                  >
+                    Importer
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button secondary-button-action"
+                    onClick={openCreateDialog}
+                  >
+                    Nouveau brouillon
+                  </button>
+                </>
               ) : undefined
             }
           />
@@ -338,6 +371,14 @@ export function PostsTable({
         post={editingPost}
         onClose={handleDialogClose}
         onSaved={() => {
+          onRefresh?.();
+        }}
+      />
+
+      <ImportPostsDialog
+        open={isImportDialogOpen}
+        onClose={() => setIsImportDialogOpen(false)}
+        onImported={() => {
           onRefresh?.();
         }}
       />

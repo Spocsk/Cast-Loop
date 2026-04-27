@@ -1,5 +1,6 @@
 import { BadGatewayException, BadRequestException, ForbiddenException } from "@nestjs/common";
 import { PublishingSettingsService } from "../src/modules/publishing/publishing-settings.service";
+import apiPackageJson from "../package.json";
 
 const ORGANIZATION_ID = "8fe2d17d-b0f0-4f87-8f30-e10d2da3521e";
 
@@ -25,6 +26,14 @@ const buildService = () => {
 };
 
 describe("PublishingSettingsService.sendTelegramTestMessage", () => {
+  it("returns the API package version", () => {
+    const { service } = buildService();
+
+    expect(service.getApiVersion()).toEqual({
+      apiVersion: apiPackageJson.version
+    });
+  });
+
   it("returns a delivery payload when telegram is configured", async () => {
     const { service, organizationsService, databaseService, telegramNotifierService } = buildService();
 

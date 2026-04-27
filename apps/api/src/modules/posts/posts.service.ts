@@ -1,14 +1,31 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { PostState, PostTargetStatus } from "@cast-loop/shared";
+import { isISO8601, isUUID } from "class-validator";
+import { PoolClient } from "pg";
+import {
+  CreatePostResult,
+  ImportPostError,
+  ImportPostsResult,
+  PostState,
+  PostTargetStatus
+} from "@cast-loop/shared";
 import { AppEnv } from "../../config/env";
 import { DatabaseService } from "../../database/database.service";
 import { AuditService } from "../audit/audit.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { CreatePostDto } from "./dto/create-post.dto";
+import { ImportPostItemDto, ImportPostsDto } from "./dto/import-posts.dto";
 import { ListPostsDto } from "./dto/list-posts.dto";
 import { SchedulePostDto } from "./dto/schedule-post.dto";
 import { UpdatePostDto } from "./dto/update-post.dto";
+
+const MAX_IMPORT_POSTS = 100;
+
+type NormalizedImportPost = Omit<CreatePostDto, "organizationId"> & {
+  targetSocialAccountIds?: string[];
+};
+
+type PostWriteDto = CreatePostDto | (NormalizedImportPost & { organizationId: string });
 
 @Injectable()
 export class PostsService {
@@ -71,80 +88,49 @@ export class PostsService {
     const state: PostState = dto.scheduledAt ? "scheduled" : "draft";
 
     return this.databaseService.transaction(async (client) => {
-      const [post] = await this.databaseService.query<{
-        id: string;
-        organizationId: string;
-        title: string;
-        content: string;
-        scheduledAt: string | null;
-        state: PostState;
-        sendTelegramReminder: boolean;
-      }>(
-        `
-          insert into posts (
-            organization_id,
-            author_user_id,
-            title,
-            content,
-            primary_media_asset_id,
-            scheduled_at,
-            state,
-            send_telegram_reminder
-          )
-          values ($1, $2, $3, $4, $5, $6, $7, $8)
-          returning
-            id,
-            organization_id as "organizationId",
-            title,
-            content,
-            scheduled_at as "scheduledAt",
-            state,
-            send_telegram_reminder as "sendTelegramReminder"
-        `,
-        [
-          dto.organizationId,
-          userId,
-          dto.title,
-          dto.content,
-          dto.primaryMediaAssetId ?? null,
-          dto.scheduledAt ?? null,
-          state,
-          dto.sendTelegramReminder ?? false
-        ],
-        client
-      );
+      return this.insertPost(userId, dto, targetIds, state, client, "post.created");
+    });
+  }
 
-      for (const targetId of targetIds) {
-        await this.databaseService.query(
-          `
-            insert into post_targets (post_id, social_account_id, provider, status)
-            select $1, sa.id, sa.provider, 'pending'
-            from social_accounts sa
-            where sa.id = $2
-          `,
-          [post.id, targetId],
-          client
+  async importPosts(userId: string, dto: ImportPostsDto): Promise<ImportPostsResult> {
+    await this.organizationsService.assertMembership(dto.organizationId, userId);
+
+    const normalized = await this.validateImportPosts(dto);
+
+    const posts = await this.databaseService.transaction(async (client) => {
+      const createdPosts: CreatePostResult[] = [];
+
+      for (const post of normalized) {
+        const targetIds = [...new Set(post.targetSocialAccountIds ?? [])];
+        const state: PostState = post.scheduledAt ? "scheduled" : "draft";
+        const createdPost = await this.insertPost(
+          userId,
+          { ...post, organizationId: dto.organizationId },
+          targetIds,
+          state,
+          client,
+          "post.imported"
         );
+
+        createdPosts.push(createdPost);
       }
 
       await this.auditService.record(
         {
           organizationId: dto.organizationId,
           actorUserId: userId,
-          entityType: "post",
-          entityId: post.id,
-          action: "post.created",
-          payload: {
-            title: dto.title,
-            scheduledAt: dto.scheduledAt ?? null,
-            sendTelegramReminder: dto.sendTelegramReminder ?? false
-          }
+          entityType: "post_import",
+          entityId: dto.organizationId,
+          action: "post.import.completed",
+          payload: { createdCount: createdPosts.length }
         },
         client
       );
 
-      return post;
+      return createdPosts;
     });
+
+    return { createdCount: posts.length, posts };
   }
 
   async update(userId: string, postId: string, dto: UpdatePostDto) {
@@ -555,7 +541,7 @@ export class PostsService {
             result.targetStatus,
             result.externalPostId ?? null,
             result.errorMessage ?? null,
-            result.responsePayload ?? {},
+            result.responsePayload ?? {}
           ],
           client
         );
@@ -582,11 +568,406 @@ export class PostsService {
         [
           postId,
           hasFailures ? "failed" : "published",
-          hasFailures ? results.find((result) => !result.success)?.errorMessage ?? "Unknown error" : null
+          hasFailures ? (results.find((result) => !result.success)?.errorMessage ?? "Unknown error") : null
         ],
         client
       );
     });
+  }
+
+  private async insertPost(
+    userId: string,
+    dto: PostWriteDto,
+    targetIds: string[],
+    state: PostState,
+    client: PoolClient,
+    auditAction: "post.created" | "post.imported"
+  ): Promise<CreatePostResult> {
+    const [post] = await this.databaseService.query<{
+      id: string;
+      organizationId: string;
+      title: string;
+      content: string;
+      scheduledAt: string | null;
+      state: PostState;
+      sendTelegramReminder: boolean;
+    }>(
+      `
+        insert into posts (
+          organization_id,
+          author_user_id,
+          title,
+          content,
+          primary_media_asset_id,
+          scheduled_at,
+          state,
+          send_telegram_reminder
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8)
+        returning
+          id,
+          organization_id as "organizationId",
+          title,
+          content,
+          scheduled_at as "scheduledAt",
+          state,
+          send_telegram_reminder as "sendTelegramReminder"
+      `,
+      [
+        dto.organizationId,
+        userId,
+        dto.title,
+        dto.content,
+        dto.primaryMediaAssetId ?? null,
+        dto.scheduledAt ?? null,
+        state,
+        dto.sendTelegramReminder ?? false
+      ],
+      client
+    );
+
+    for (const targetId of targetIds) {
+      await this.databaseService.query(
+        `
+          insert into post_targets (post_id, social_account_id, provider, status)
+          select $1, sa.id, sa.provider, 'pending'
+          from social_accounts sa
+          where sa.id = $2
+        `,
+        [post.id, targetId],
+        client
+      );
+    }
+
+    await this.auditService.record(
+      {
+        organizationId: dto.organizationId,
+        actorUserId: userId,
+        entityType: "post",
+        entityId: post.id,
+        action: auditAction,
+        payload: {
+          title: dto.title,
+          scheduledAt: dto.scheduledAt ?? null,
+          sendTelegramReminder: dto.sendTelegramReminder ?? false
+        }
+      },
+      client
+    );
+
+    return post;
+  }
+
+  private async validateImportPosts(dto: ImportPostsDto): Promise<NormalizedImportPost[]> {
+    const errors: ImportPostError[] = [];
+
+    if (dto.posts.length === 0) {
+      errors.push({
+        row: 0,
+        field: "posts",
+        message: "Le fichier ne contient aucun post."
+      });
+    }
+
+    if (dto.posts.length > MAX_IMPORT_POSTS) {
+      errors.push({
+        row: 0,
+        field: "posts",
+        message: `Le fichier ne peut pas contenir plus de ${MAX_IMPORT_POSTS} posts.`
+      });
+    }
+
+    const normalized = dto.posts.map((post, index) => this.normalizeImportPost(post, index + 1, errors));
+    const validPosts = normalized.filter((post): post is NormalizedImportPost => post !== null);
+    const targetIds = [...new Set(validPosts.flatMap((post) => post.targetSocialAccountIds ?? []))];
+    const mediaIds = [
+      ...new Set(validPosts.flatMap((post) => (post.primaryMediaAssetId ? [post.primaryMediaAssetId] : [])))
+    ];
+    const accountsById = await this.getImportTargetAccounts(dto.organizationId, targetIds);
+    const mediaIdsForOrganization = await this.getImportMediaAssetIds(dto.organizationId, mediaIds);
+
+    for (const [index, post] of validPosts.entries()) {
+      const row = this.findImportRow(normalized, post, index);
+      const postTargetIds = post.targetSocialAccountIds ?? [];
+
+      if (post.primaryMediaAssetId && !mediaIdsForOrganization.has(post.primaryMediaAssetId)) {
+        errors.push({
+          row,
+          field: "primaryMediaAssetId",
+          message: "Ce media n'existe pas dans l'organisation active."
+        });
+      }
+
+      const accounts = postTargetIds.map((targetId) => accountsById.get(targetId));
+
+      if (postTargetIds.some((targetId) => !accountsById.has(targetId))) {
+        errors.push({
+          row,
+          field: "targetSocialAccountIds",
+          message: "Un ou plusieurs comptes cibles sont invalides pour cette organisation."
+        });
+        continue;
+      }
+
+      if (post.scheduledAt && postTargetIds.length === 0) {
+        errors.push({
+          row,
+          field: "targetSocialAccountIds",
+          message: "Au moins un compte cible est requis pour planifier un post."
+        });
+        continue;
+      }
+
+      if (post.scheduledAt && accounts.some((account) => account?.status !== "connected")) {
+        errors.push({
+          row,
+          field: "targetSocialAccountIds",
+          message: "Tous les comptes cibles doivent etre connectes avant de planifier."
+        });
+      }
+
+      const hasConnectOnly = accounts.some((account) => account?.publishCapability === "connect_only");
+
+      if (post.sendTelegramReminder && !hasConnectOnly) {
+        errors.push({
+          row,
+          field: "sendTelegramReminder",
+          message:
+            "Le rappel Telegram ne peut etre active que si au moins un compte en connexion seule est selectionne."
+        });
+      }
+
+      if (post.scheduledAt && hasConnectOnly && !post.sendTelegramReminder) {
+        errors.push({
+          row,
+          field: "sendTelegramReminder",
+          message: "Activez le rappel Telegram pour planifier un post avec des comptes en connexion seule."
+        });
+      }
+
+      if (post.scheduledAt && hasConnectOnly && post.sendTelegramReminder) {
+        try {
+          this.assertTelegramConfigured();
+        } catch (error) {
+          errors.push({
+            row,
+            field: "sendTelegramReminder",
+            message: error instanceof Error ? error.message : "La configuration Telegram est incomplete."
+          });
+        }
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        message: "Le fichier contient des erreurs. Aucun post n'a ete cree.",
+        errors
+      });
+    }
+
+    return validPosts;
+  }
+
+  private normalizeImportPost(
+    post: ImportPostItemDto,
+    row: number,
+    errors: ImportPostError[]
+  ): NormalizedImportPost | null {
+    const title = this.normalizeRequiredString(post.title, row, "title", 120, errors);
+    const content = this.normalizeRequiredString(post.content, row, "content", 5000, errors);
+    const scheduledAt = this.normalizeOptionalIsoDate(post.scheduledAt, row, errors);
+    const targetSocialAccountIds = this.normalizeOptionalUuidArray(
+      post.targetSocialAccountIds,
+      row,
+      "targetSocialAccountIds",
+      errors
+    );
+    const primaryMediaAssetId = this.normalizeOptionalUuid(
+      post.primaryMediaAssetId,
+      row,
+      "primaryMediaAssetId",
+      errors
+    );
+    const sendTelegramReminder = this.normalizeOptionalBoolean(post.sendTelegramReminder, row, errors);
+
+    if (
+      !title ||
+      !content ||
+      scheduledAt === null ||
+      targetSocialAccountIds === null ||
+      primaryMediaAssetId === null ||
+      sendTelegramReminder === null
+    ) {
+      return null;
+    }
+
+    return {
+      title,
+      content,
+      primaryMediaAssetId: primaryMediaAssetId ?? undefined,
+      targetSocialAccountIds:
+        targetSocialAccountIds.length > 0 ? [...new Set(targetSocialAccountIds)] : undefined,
+      scheduledAt,
+      sendTelegramReminder
+    };
+  }
+
+  private normalizeRequiredString(
+    value: unknown,
+    row: number,
+    field: "title" | "content",
+    maxLength: number,
+    errors: ImportPostError[]
+  ) {
+    if (typeof value !== "string") {
+      errors.push({ row, field, message: "Ce champ est requis." });
+      return null;
+    }
+
+    const normalized = value.trim();
+
+    if (normalized.length === 0) {
+      errors.push({ row, field, message: "Ce champ est requis." });
+      return null;
+    }
+
+    if (normalized.length > maxLength) {
+      errors.push({ row, field, message: `Ce champ ne peut pas depasser ${maxLength} caracteres.` });
+      return null;
+    }
+
+    return normalized;
+  }
+
+  private normalizeOptionalIsoDate(value: unknown, row: number, errors: ImportPostError[]) {
+    if (value === undefined || value === null || value === "") {
+      return undefined;
+    }
+
+    if (typeof value !== "string" || !isISO8601(value, { strict: true, strictSeparator: true })) {
+      errors.push({ row, field: "scheduledAt", message: "La date doit etre au format ISO 8601." });
+      return null;
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      errors.push({ row, field: "scheduledAt", message: "La date doit etre valide." });
+      return null;
+    }
+
+    return date.toISOString();
+  }
+
+  private normalizeOptionalUuid(
+    value: unknown,
+    row: number,
+    field: "primaryMediaAssetId",
+    errors: ImportPostError[]
+  ) {
+    if (value === undefined || value === null || value === "") {
+      return undefined;
+    }
+
+    if (typeof value !== "string" || !isUUID(value, "4")) {
+      errors.push({ row, field, message: "La valeur doit etre un UUID valide." });
+      return null;
+    }
+
+    return value;
+  }
+
+  private normalizeOptionalUuidArray(
+    value: unknown,
+    row: number,
+    field: "targetSocialAccountIds",
+    errors: ImportPostError[]
+  ) {
+    if (value === undefined || value === null) {
+      return [];
+    }
+
+    if (!Array.isArray(value)) {
+      errors.push({ row, field, message: "La valeur doit etre une liste d'UUID." });
+      return null;
+    }
+
+    const values = value.filter((item) => item !== "");
+
+    if (values.some((item) => typeof item !== "string" || !isUUID(item, "4"))) {
+      errors.push({ row, field, message: "Chaque compte cible doit etre un UUID valide." });
+      return null;
+    }
+
+    return values as string[];
+  }
+
+  private normalizeOptionalBoolean(value: unknown, row: number, errors: ImportPostError[]) {
+    if (value === undefined || value === null) {
+      return false;
+    }
+
+    if (typeof value !== "boolean") {
+      errors.push({ row, field: "sendTelegramReminder", message: "La valeur doit etre true ou false." });
+      return null;
+    }
+
+    return value;
+  }
+
+  private async getImportTargetAccounts(organizationId: string, targetIds: string[]) {
+    if (targetIds.length === 0) {
+      return new Map<
+        string,
+        { id: string; status: string; publishCapability: "publishable" | "connect_only" }
+      >();
+    }
+
+    const accounts = await this.databaseService.query<{
+      id: string;
+      status: string;
+      publishCapability: "publishable" | "connect_only";
+    }>(
+      `
+        select
+          id,
+          status,
+          publish_capability as "publishCapability"
+        from social_accounts
+        where organization_id = $1
+          and id = any($2::uuid[])
+      `,
+      [organizationId, targetIds]
+    );
+
+    return new Map(accounts.map((account) => [account.id, account]));
+  }
+
+  private async getImportMediaAssetIds(organizationId: string, mediaIds: string[]) {
+    if (mediaIds.length === 0) {
+      return new Set<string>();
+    }
+
+    const assets = await this.databaseService.query<{ id: string }>(
+      `
+        select id
+        from media_assets
+        where organization_id = $1
+          and id = any($2::uuid[])
+      `,
+      [organizationId, mediaIds]
+    );
+
+    return new Set(assets.map((asset) => asset.id));
+  }
+
+  private findImportRow(
+    normalized: Array<NormalizedImportPost | null>,
+    post: NormalizedImportPost,
+    fallbackIndex: number
+  ) {
+    const row = normalized.findIndex((candidate) => candidate === post);
+    return row >= 0 ? row + 1 : fallbackIndex + 1;
   }
 
   private async assertPostReadyToSchedule(postId: string) {

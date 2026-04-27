@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } f
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { SupabaseAuthGuard } from "../../common/guards/supabase-auth.guard";
 import { CreatePostDto } from "./dto/create-post.dto";
+import { ImportPostsDto } from "./dto/import-posts.dto";
 import { ListPostsDto } from "./dto/list-posts.dto";
 import { PostOrganizationActionDto } from "./dto/post-organization-action.dto";
 import { SchedulePostDto } from "./dto/schedule-post.dto";
@@ -23,13 +24,22 @@ export class PostsController {
     return this.postsService.create(user.id, dto);
   }
 
+  @Post("import")
+  async importPosts(@CurrentUser() user: { id: string }, @Body() dto: ImportPostsDto) {
+    return this.postsService.importPosts(user.id, dto);
+  }
+
   @Patch(":id")
   async update(@CurrentUser() user: { id: string }, @Param("id") postId: string, @Body() dto: UpdatePostDto) {
     return this.postsService.update(user.id, postId, dto);
   }
 
   @Post(":id/schedule")
-  async schedule(@CurrentUser() user: { id: string }, @Param("id") postId: string, @Body() dto: SchedulePostDto) {
+  async schedule(
+    @CurrentUser() user: { id: string },
+    @Param("id") postId: string,
+    @Body() dto: SchedulePostDto
+  ) {
     return this.postsService.schedule(user.id, postId, dto);
   }
 
