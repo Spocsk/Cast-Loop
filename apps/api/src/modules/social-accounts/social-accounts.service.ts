@@ -94,7 +94,7 @@ export class SocialAccountsService {
   ) {}
 
   async listForOrganization(organizationId: string, userId: string) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "social_accounts.read");
 
     return this.databaseService.query<SocialAccountSummary>(
       `
@@ -117,7 +117,7 @@ export class SocialAccountsService {
   }
 
   async listProviderAvailability(organizationId: string, userId: string) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "social_accounts.read");
 
     return PROVIDER_VARIANTS.map((entry) => ({
       provider: entry.provider,
@@ -134,12 +134,12 @@ export class SocialAccountsService {
   }
 
   async create(userId: string, dto: CreateSocialAccountDto) {
-    await this.organizationsService.assertMembership(dto.organizationId, userId);
+    await this.organizationsService.assertPermission(dto.organizationId, userId, "social_accounts.manage");
     return this.upsertAccount(userId, dto);
   }
 
   async startConnection(userId: string, organizationId: string, provider: SocialProvider, input: StartSocialConnectionInput) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "social_accounts.manage");
     this.assertProviderVariant(provider, input.variant);
 
     if (!this.isVariantConfigured(input.variant)) {
@@ -178,7 +178,7 @@ export class SocialAccountsService {
   }
 
   async getPendingSelection(userId: string, organizationId: string, selectionToken: string) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "social_accounts.read");
     const payload = this.decodePendingSelection(selectionToken);
 
     if (!payload || payload.organizationId !== organizationId || payload.userId !== userId || payload.expiresAt < Date.now()) {
@@ -204,7 +204,7 @@ export class SocialAccountsService {
     selectionToken: string,
     externalAccountId: string
   ) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "social_accounts.manage");
     const payload = this.decodePendingSelection(selectionToken);
 
     if (!payload || payload.organizationId !== organizationId || payload.userId !== userId || payload.expiresAt < Date.now()) {
@@ -233,7 +233,7 @@ export class SocialAccountsService {
   }
 
   async disconnect(userId: string, organizationId: string, socialAccountId: string) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "social_accounts.manage");
 
     const [account] = await this.databaseService.query<SocialAccountSummary & { provider: SocialProvider; handle: string }>(
       `
@@ -319,7 +319,7 @@ export class SocialAccountsService {
     }
 
     try {
-      await this.organizationsService.assertMembership(state.organizationId, state.userId);
+      await this.organizationsService.assertPermission(state.organizationId, state.userId, "social_accounts.manage");
 
       const accounts = await this.exchangeCodeForAccounts(state.variant, params.code);
 

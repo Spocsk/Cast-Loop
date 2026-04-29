@@ -19,6 +19,7 @@ const findMonorepoEnv = (): string | undefined => {
 };
 import { DatabaseModule } from "./database/database.module";
 import { AuthModule } from "./modules/auth/auth.module";
+import { AdminModule } from "./modules/admin/admin.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { CalendarModule } from "./modules/calendar/calendar.module";
 import { HealthModule } from "./modules/health/health.module";
@@ -39,6 +40,7 @@ import { SocialAccountsModule } from "./modules/social-accounts/social-accounts.
     ScheduleModule.forRoot(),
     DatabaseModule,
     AuditModule,
+    AdminModule,
     AuthModule,
     HealthModule,
     OrganizationsModule,

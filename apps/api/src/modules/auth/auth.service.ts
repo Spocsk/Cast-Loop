@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
-import { AuthenticatedAppUser, ValidatedSessionResult } from "@cast-loop/shared";
+import { AuthenticatedAppUser, OrganizationRole, PlatformRole, UserStatus, ValidatedSessionResult } from "@cast-loop/shared";
 import { DatabaseService } from "../../database/database.service";
 import { SupabaseAdminService } from "../../database/supabase-admin.service";
 
@@ -10,6 +10,8 @@ interface AppUserRow {
   full_name: string | null;
   avatar_url: string | null;
   active_organization_id: string | null;
+  platform_role: PlatformRole;
+  status: UserStatus;
 }
 
 @Injectable()
@@ -36,14 +38,20 @@ export class AuthService {
       avatarUrl: user.user_metadata?.avatar_url ?? null
     });
 
+    if (appUser.status !== "active") {
+      throw new ForbiddenException("Votre compte est desactive.");
+    }
+
     const memberships = await this.databaseService.query<{
       organization_id: string;
-      role: "owner" | "manager" | "editor";
+      role: OrganizationRole;
     }>(
       `
-        select organization_id, role
-        from organization_members
-        where user_id = $1
+        select om.organization_id, om.role
+        from organization_members om
+        inner join organizations o on o.id = om.organization_id
+        where om.user_id = $1
+          and o.status = 'active'
       `,
       [appUser.id]
     );
@@ -107,10 +115,10 @@ export class AuthService {
         values ($1, $2, $3, $4)
         on conflict (auth_user_id) do update
         set email = excluded.email,
-            full_name = excluded.full_name,
+            full_name = coalesce(users.full_name, excluded.full_name),
             avatar_url = excluded.avatar_url,
             updated_at = now()
-        returning id, auth_user_id, email, full_name, avatar_url, active_organization_id
+        returning id, auth_user_id, email, full_name, avatar_url, active_organization_id, platform_role, status
       `,
       [payload.authUserId, payload.email, payload.fullName, payload.avatarUrl]
     );
@@ -120,12 +128,14 @@ export class AuthService {
       authUserId: row.auth_user_id,
       email: row.email,
       fullName: row.full_name,
-      avatarUrl: row.avatar_url
+      avatarUrl: row.avatar_url,
+      platformRole: row.platform_role,
+      status: row.status
     };
   }
 
   private resolveActiveOrganizationId(
-    memberships: Array<{ organizationId: string; role: "owner" | "manager" | "editor" }>,
+    memberships: Array<{ organizationId: string; role: OrganizationRole }>,
     requestedOrganizationId?: string,
     persistedOrganizationId?: string | null
   ) {

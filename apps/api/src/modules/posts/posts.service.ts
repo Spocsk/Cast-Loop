@@ -37,7 +37,7 @@ export class PostsService {
   ) {}
 
   async list(userId: string, query: ListPostsDto) {
-    await this.organizationsService.assertMembership(query.organizationId, userId);
+    await this.organizationsService.assertPermission(query.organizationId, userId, "posts.read");
 
     const params: unknown[] = [query.organizationId];
     const filters = ["p.organization_id = $1"];
@@ -75,7 +75,10 @@ export class PostsService {
   }
 
   async create(userId: string, dto: CreatePostDto) {
-    await this.organizationsService.assertMembership(dto.organizationId, userId);
+    await this.organizationsService.assertPermission(dto.organizationId, userId, "posts.write");
+    if (dto.scheduledAt) {
+      await this.organizationsService.assertPermission(dto.organizationId, userId, "posts.schedule");
+    }
 
     const targetIds = [...new Set(dto.targetSocialAccountIds ?? [])];
 
@@ -93,7 +96,10 @@ export class PostsService {
   }
 
   async importPosts(userId: string, dto: ImportPostsDto): Promise<ImportPostsResult> {
-    await this.organizationsService.assertMembership(dto.organizationId, userId);
+    await this.organizationsService.assertPermission(dto.organizationId, userId, "posts.write");
+    if (dto.posts.some((post) => post.scheduledAt)) {
+      await this.organizationsService.assertPermission(dto.organizationId, userId, "posts.schedule");
+    }
 
     const normalized = await this.validateImportPosts(dto);
 
@@ -134,7 +140,10 @@ export class PostsService {
   }
 
   async update(userId: string, postId: string, dto: UpdatePostDto) {
-    await this.organizationsService.assertMembership(dto.organizationId, userId);
+    await this.organizationsService.assertPermission(dto.organizationId, userId, "posts.write");
+    if (dto.scheduledAt) {
+      await this.organizationsService.assertPermission(dto.organizationId, userId, "posts.schedule");
+    }
     await this.assertPostEditable(postId, dto.organizationId);
 
     const targetIds = [...new Set(dto.targetSocialAccountIds ?? [])];
@@ -226,7 +235,7 @@ export class PostsService {
   }
 
   async schedule(userId: string, postId: string, dto: SchedulePostDto) {
-    await this.organizationsService.assertMembership(dto.organizationId, userId);
+    await this.organizationsService.assertPermission(dto.organizationId, userId, "posts.schedule");
     await this.assertPostOwnership(postId, dto.organizationId);
     await this.assertPostReadyToSchedule(postId);
 
@@ -255,12 +264,13 @@ export class PostsService {
   }
 
   async publishNow(userId: string, postId: string, organizationId: string) {
+    await this.organizationsService.assertPermission(organizationId, userId, "posts.publish");
     const now = new Date().toISOString();
     return this.schedule(userId, postId, { organizationId, scheduledAt: now });
   }
 
   async cancel(userId: string, postId: string, organizationId: string) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "posts.schedule");
     await this.assertPostOwnership(postId, organizationId);
 
     await this.databaseService.transaction(async (client) => {
@@ -302,7 +312,7 @@ export class PostsService {
   }
 
   async archive(userId: string, postId: string, organizationId: string) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "posts.archive");
     const post = await this.assertPostEditable(postId, organizationId);
 
     const [archivedPost] = await this.databaseService.query<{ id: string; archivedAt: string }>(
@@ -329,7 +339,7 @@ export class PostsService {
   }
 
   async restore(userId: string, postId: string, organizationId: string) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "posts.archive");
     const post = await this.getPostRecord(postId, organizationId);
 
     if (!post.archivedAt) {
@@ -364,7 +374,7 @@ export class PostsService {
   }
 
   async deleteArchived(userId: string, postId: string, organizationId: string) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "posts.delete");
     const post = await this.getPostRecord(postId, organizationId);
 
     if (!post.archivedAt) {

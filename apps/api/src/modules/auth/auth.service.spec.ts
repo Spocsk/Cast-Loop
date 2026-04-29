@@ -34,7 +34,9 @@ describe("AuthService", () => {
       email: "alice@example.com",
       full_name: "Alice",
       avatar_url: null,
-      active_organization_id: null
+      active_organization_id: null,
+            platform_role: "user",
+            status: "active"
     };
 
     const query = jest
@@ -57,7 +59,9 @@ describe("AuthService", () => {
       authUserId: "auth-1",
       email: "alice@example.com",
       fullName: "Alice",
-      avatarUrl: null
+      avatarUrl: null,
+      platformRole: "user",
+      status: "active"
     });
     expect(result.memberships).toEqual([{ organizationId: "org-1", role: "owner" }]);
     expect(query).toHaveBeenCalledTimes(2);
@@ -78,14 +82,18 @@ describe("AuthService", () => {
             email: "a@b.c",
             full_name: null,
             avatar_url: null,
-            active_organization_id: null
+            active_organization_id: null,
+            platform_role: "user",
+            status: "active"
           }
         ])
         .mockResolvedValueOnce([
           { organization_id: "org-1", role: "owner" },
           { organization_id: "org-2", role: "editor" }
         ])
-        .mockResolvedValueOnce([{ active_organization_id: null }])
+        .mockResolvedValueOnce([{ active_organization_id: null ,
+            platform_role: "user",
+            status: "active"}])
         .mockResolvedValueOnce([]);
 
       const res = await service.validateSession("t", "org-2");
@@ -106,11 +114,15 @@ describe("AuthService", () => {
             email: "a@b.c",
             full_name: null,
             avatar_url: null,
-            active_organization_id: null
+            active_organization_id: null,
+            platform_role: "user",
+            status: "active"
           }
         ])
         .mockResolvedValueOnce([{ organization_id: "org-1", role: "owner" }])
-        .mockResolvedValueOnce([{ active_organization_id: null }])
+        .mockResolvedValueOnce([{ active_organization_id: null ,
+            platform_role: "user",
+            status: "active"}])
         .mockResolvedValueOnce([]);
 
       const res = await service.validateSession("t", "org-inexistant");
@@ -131,11 +143,15 @@ describe("AuthService", () => {
             email: "a@b.c",
             full_name: null,
             avatar_url: null,
-            active_organization_id: null
+            active_organization_id: null,
+            platform_role: "user",
+            status: "active"
           }
         ])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ active_organization_id: null }]);
+        .mockResolvedValueOnce([{ active_organization_id: null ,
+            platform_role: "user",
+            status: "active"}]);
 
       const res = await service.validateSession("t");
       expect(res.activeOrganizationId).toBeNull();
@@ -155,14 +171,18 @@ describe("AuthService", () => {
             email: "a@b.c",
             full_name: null,
             avatar_url: null,
-            active_organization_id: "org-2"
+            active_organization_id: "org-2",
+            platform_role: "user",
+            status: "active"
           }
         ])
         .mockResolvedValueOnce([
           { organization_id: "org-1", role: "owner" },
           { organization_id: "org-2", role: "editor" }
         ])
-        .mockResolvedValueOnce([{ active_organization_id: "org-2" }]);
+        .mockResolvedValueOnce([{ active_organization_id: "org-2" ,
+            platform_role: "user",
+            status: "active"}]);
 
       const res = await service.validateSession("t");
       expect(res.activeOrganizationId).toBe("org-2");
@@ -184,7 +204,9 @@ describe("AuthService", () => {
             email: "a@b.c",
             full_name: null,
             avatar_url: null,
-            active_organization_id: null
+            active_organization_id: null,
+            platform_role: "user",
+            status: "active"
           }
         ])
         .mockResolvedValueOnce([

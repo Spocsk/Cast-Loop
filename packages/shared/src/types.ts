@@ -16,8 +16,73 @@ export const socialProviderConnectionVariants = [
 ] as const;
 export type SocialProviderConnectionVariant = (typeof socialProviderConnectionVariants)[number];
 
-export const organizationRoles = ["owner", "manager", "editor"] as const;
+export const organizationRoles = ["owner", "admin", "manager", "editor"] as const;
 export type OrganizationRole = (typeof organizationRoles)[number];
+
+export const platformRoles = ["user", "super_admin"] as const;
+export type PlatformRole = (typeof platformRoles)[number];
+
+export const userStatuses = ["active", "disabled"] as const;
+export type UserStatus = (typeof userStatuses)[number];
+
+export const organizationStatuses = ["active", "disabled"] as const;
+export type OrganizationStatus = (typeof organizationStatuses)[number];
+
+export const organizationPermissions = [
+  "organization.read",
+  "organization.update",
+  "organization.delete",
+  "members.manage",
+  "social_accounts.read",
+  "social_accounts.manage",
+  "social_accounts.reset",
+  "media.read",
+  "media.write",
+  "media.delete",
+  "posts.read",
+  "posts.write",
+  "posts.schedule",
+  "posts.publish",
+  "posts.archive",
+  "posts.delete",
+  "settings.read",
+  "settings.manage"
+] as const;
+export type OrganizationPermission = (typeof organizationPermissions)[number];
+
+export const rolePermissions: Record<OrganizationRole, readonly OrganizationPermission[]> = {
+  owner: organizationPermissions,
+  admin: organizationPermissions.filter(
+    (permission) => permission !== "organization.delete"
+  ),
+  manager: [
+    "organization.read",
+    "social_accounts.read",
+    "media.read",
+    "media.write",
+    "media.delete",
+    "posts.read",
+    "posts.write",
+    "posts.schedule",
+    "posts.publish",
+    "posts.archive",
+    "posts.delete",
+    "settings.read"
+  ],
+  editor: [
+    "organization.read",
+    "social_accounts.read",
+    "media.read",
+    "media.write",
+    "posts.read",
+    "posts.write",
+    "posts.archive",
+    "settings.read"
+  ]
+};
+
+export const roleHasPermission = (role: OrganizationRole, permission: OrganizationPermission) =>
+  rolePermissions[role].includes(permission);
 
 export const socialAccountStatuses = ["connected", "expired", "disconnected"] as const;
 export type SocialAccountStatus = (typeof socialAccountStatuses)[number];
@@ -49,12 +114,15 @@ export interface AuthenticatedAppUser {
   email: string;
   fullName: string | null;
   avatarUrl: string | null;
+  platformRole: PlatformRole;
+  status: UserStatus;
 }
 
 export interface OrganizationSummary {
   id: string;
   name: string;
   slug: string;
+  status: OrganizationStatus;
   role: OrganizationRole;
 }
 
@@ -251,4 +319,78 @@ export interface CalendarPostItem {
   scheduledAt: string;
   state: PostState;
   providers: SocialProvider[];
+}
+
+export interface AdminMembership {
+  organizationId: string;
+  organizationName: string;
+  role: OrganizationRole;
+}
+
+export interface AdminUserSummary {
+  id: string;
+  authUserId: string;
+  email: string;
+  fullName: string | null;
+  platformRole: PlatformRole;
+  status: UserStatus;
+  createdAt: string;
+  memberships: AdminMembership[];
+}
+
+export interface AdminOrganizationSummary {
+  id: string;
+  name: string;
+  slug: string;
+  status: OrganizationStatus;
+  memberCount: number;
+  socialAccountCount: number;
+  createdAt: string;
+}
+
+export interface AdminMembershipInput {
+  organizationId: string;
+  role: OrganizationRole;
+}
+
+export interface AdminCreateUserInput {
+  email: string;
+  fullName?: string | null;
+  platformRole?: PlatformRole;
+  status?: UserStatus;
+  memberships?: AdminMembershipInput[];
+}
+
+export interface AdminUpdateUserInput {
+  email?: string;
+  fullName?: string | null;
+  platformRole?: PlatformRole;
+  status?: UserStatus;
+  memberships?: AdminMembershipInput[];
+}
+
+export interface AdminPasswordLinkResult {
+  userId: string;
+  actionLink: string;
+}
+
+export interface AdminCreateOrganizationInput {
+  name: string;
+}
+
+export interface AdminUpdateOrganizationInput {
+  name?: string;
+  slug?: string;
+  status?: OrganizationStatus;
+}
+
+export interface AdminDeleteResult {
+  id: string;
+  deleted: true;
+  hard: boolean;
+}
+
+export interface AdminResetSocialConnectionsResult {
+  organizationId: string;
+  resetCount: number;
 }

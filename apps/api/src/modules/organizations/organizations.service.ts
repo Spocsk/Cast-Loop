@@ -1,4 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable } from "@nestjs/common";
+import { OrganizationPermission, OrganizationRole, roleHasPermission } from "@cast-loop/shared";
 import { DatabaseService } from "../../database/database.service";
 import { AuditService } from "../audit/audit.service";
 import { CreateOrganizationDto } from "./dto/create-organization.dto";
@@ -15,13 +16,15 @@ export class OrganizationsService {
       id: string;
       name: string;
       slug: string;
-      role: "owner" | "manager" | "editor";
+      status: "active" | "disabled";
+      role: OrganizationRole;
     }>(
       `
-        select o.id, o.name, o.slug, om.role
+        select o.id, o.name, o.slug, o.status, om.role
         from organizations o
         inner join organization_members om on om.organization_id = o.id
         where om.user_id = $1
+          and o.status = 'active'
         order by o.name asc
       `,
       [userId]
@@ -82,7 +85,7 @@ export class OrganizationsService {
         return createdOrganization;
       });
 
-      return { ...organization, role: "owner" as const };
+      return { ...organization, status: "active" as const, role: "owner" as const };
     } catch (error) {
       if (error instanceof Error && /organizations_slug_key/.test(error.message)) {
         throw new ConflictException("Organization slug already exists");
@@ -95,18 +98,33 @@ export class OrganizationsService {
   async assertMembership(organizationId: string, userId: string) {
     const [membership] = await this.databaseService.query<{
       organization_id: string;
-      role: "owner" | "manager" | "editor";
+      role: OrganizationRole;
     }>(
       `
-        select organization_id, role
-        from organization_members
-        where organization_id = $1 and user_id = $2
+        select om.organization_id, om.role
+        from organization_members om
+        inner join organizations o on o.id = om.organization_id
+        inner join users u on u.id = om.user_id
+        where om.organization_id = $1
+          and om.user_id = $2
+          and o.status = 'active'
+          and u.status = 'active'
       `,
       [organizationId, userId]
     );
 
     if (!membership) {
       throw new ForbiddenException("You do not have access to this organization");
+    }
+
+    return membership;
+  }
+
+  async assertPermission(organizationId: string, userId: string, permission: OrganizationPermission) {
+    const membership = await this.assertMembership(organizationId, userId);
+
+    if (!roleHasPermission(membership.role, permission)) {
+      throw new ForbiddenException("Votre role ne permet pas cette action.");
     }
 
     return membership;

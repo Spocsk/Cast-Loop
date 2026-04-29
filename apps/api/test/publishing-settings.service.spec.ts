@@ -9,7 +9,7 @@ const buildService = () => {
     query: jest.fn().mockResolvedValue([{ name: "Acme Studio" }])
   };
   const organizationsService = {
-    assertMembership: jest.fn().mockResolvedValue({ organization_id: ORGANIZATION_ID, role: "owner" })
+    assertPermission: jest.fn().mockResolvedValue({ organization_id: ORGANIZATION_ID, role: "owner" })
   };
   const telegramNotifierService = {
     isConfigured: jest.fn().mockReturnValue(true),
@@ -39,7 +39,11 @@ describe("PublishingSettingsService.sendTelegramTestMessage", () => {
 
     const result = await service.sendTelegramTestMessage("user-1", ORGANIZATION_ID);
 
-    expect(organizationsService.assertMembership).toHaveBeenCalledWith(ORGANIZATION_ID, "user-1");
+    expect(organizationsService.assertPermission).toHaveBeenCalledWith(
+      ORGANIZATION_ID,
+      "user-1",
+      "settings.manage"
+    );
     expect(databaseService.query).toHaveBeenCalledWith(expect.stringContaining("select name"), [
       ORGANIZATION_ID
     ]);
@@ -58,7 +62,7 @@ describe("PublishingSettingsService.sendTelegramTestMessage", () => {
 
   it("rejects when the user has no access to the organization", async () => {
     const { service, organizationsService } = buildService();
-    organizationsService.assertMembership.mockRejectedValueOnce(new ForbiddenException("No access"));
+    organizationsService.assertPermission.mockRejectedValueOnce(new ForbiddenException("No access"));
 
     await expect(service.sendTelegramTestMessage("user-1", ORGANIZATION_ID)).rejects.toBeInstanceOf(
       ForbiddenException

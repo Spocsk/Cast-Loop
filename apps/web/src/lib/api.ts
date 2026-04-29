@@ -1,4 +1,13 @@
 import {
+  AdminCreateOrganizationInput,
+  AdminCreateUserInput,
+  AdminDeleteResult,
+  AdminOrganizationSummary,
+  AdminPasswordLinkResult,
+  AdminResetSocialConnectionsResult,
+  AdminUpdateOrganizationInput,
+  AdminUpdateUserInput,
+  AdminUserSummary,
   ApiVersionResult,
   CalendarPostItem,
   CreateOrganizationInput,
@@ -147,6 +156,75 @@ export async function createOrganization(accessToken: string, payload: CreateOrg
     method: "POST",
     body: JSON.stringify(payload)
   });
+}
+
+export async function fetchAdminUsers(accessToken: string) {
+  return apiRequest<AdminUserSummary[]>("/admin/users", accessToken);
+}
+
+export async function createAdminUser(accessToken: string, payload: AdminCreateUserInput) {
+  return apiRequest<AdminPasswordLinkResult>("/admin/users", accessToken, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateAdminUser(accessToken: string, userId: string, payload: AdminUpdateUserInput) {
+  return apiRequest<AdminUserSummary>(`/admin/users/${userId}`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteAdminUser(accessToken: string, userId: string, hard = false) {
+  const searchParams = hard ? new URLSearchParams({ hard: "true" }) : undefined;
+  return apiRequest<AdminDeleteResult>(`/admin/users/${userId}`, accessToken, { method: "DELETE" }, searchParams);
+}
+
+export async function resetAdminUserPassword(accessToken: string, userId: string) {
+  return apiRequest<AdminPasswordLinkResult>(`/admin/users/${userId}/reset-password`, accessToken, {
+    method: "POST"
+  });
+}
+
+export async function fetchAdminOrganizations(accessToken: string) {
+  return apiRequest<AdminOrganizationSummary[]>("/admin/organizations", accessToken);
+}
+
+export async function createAdminOrganization(accessToken: string, payload: AdminCreateOrganizationInput) {
+  return apiRequest<AdminOrganizationSummary>("/admin/organizations", accessToken, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateAdminOrganization(
+  accessToken: string,
+  organizationId: string,
+  payload: AdminUpdateOrganizationInput
+) {
+  return apiRequest<AdminOrganizationSummary>(`/admin/organizations/${organizationId}`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteAdminOrganization(accessToken: string, organizationId: string, hard = false) {
+  const searchParams = hard ? new URLSearchParams({ hard: "true" }) : undefined;
+  return apiRequest<AdminDeleteResult>(
+    `/admin/organizations/${organizationId}`,
+    accessToken,
+    { method: "DELETE" },
+    searchParams
+  );
+}
+
+export async function resetAdminOrganizationSocialConnections(accessToken: string, organizationId: string) {
+  return apiRequest<AdminResetSocialConnectionsResult>(
+    `/admin/organizations/${organizationId}/reset-social-connections`,
+    accessToken,
+    { method: "POST" }
+  );
 }
 
 export async function sendTelegramTestMessage(accessToken: string, payload: SendTelegramTestMessageInput) {
