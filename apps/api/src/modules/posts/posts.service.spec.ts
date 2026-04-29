@@ -24,7 +24,7 @@ describe("PostsService importPosts", () => {
       jest.fn(async (callback: (client: unknown) => Promise<unknown>) => callback({ tx: true }));
     const databaseService = { query, transaction } as unknown as DatabaseService;
     const organizationsService = {
-      assertMembership: jest.fn().mockResolvedValue(undefined)
+      assertPermission: jest.fn().mockResolvedValue(undefined)
     } as unknown as OrganizationsService;
     const auditService = {
       record: jest.fn().mockResolvedValue(undefined)

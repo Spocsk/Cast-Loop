@@ -10,7 +10,7 @@ type QueryMock = jest.Mock;
 const buildService = (queryImpl: (sql: string, params?: unknown[]) => unknown[] | Promise<unknown[]>) => {
   const query: QueryMock = jest.fn((sql: string, params?: unknown[]) => Promise.resolve(queryImpl(sql, params)));
   const transaction = jest.fn(async (callback: (client: unknown) => Promise<unknown>) => callback({}));
-  const organizationsService = { assertMembership: jest.fn() };
+  const organizationsService = { assertPermission: jest.fn().mockResolvedValue(undefined) };
   const auditService = { record: jest.fn() };
   const configService = {
     get: jest.fn((key: string) => {

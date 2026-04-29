@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
-import type { Route } from "next";
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useSessionContext } from "@/components/providers/session-provider";
 import { Dropdown } from "@/components/ui/dropdown";
@@ -12,7 +12,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/toast-provider";
 import { getGravatarUrl } from "@/lib/gravatar";
 
-const navigation: Array<{ href: Route; label: string }> = [
+const navigation: Array<{ href: string; label: string }> = [
   { href: "/dashboard", label: "Vue d'ensemble" },
   { href: "/calendar", label: "Calendrier" },
   { href: "/posts", label: "Posts" },
@@ -21,6 +21,8 @@ const navigation: Array<{ href: Route; label: string }> = [
   { href: "/social-accounts", label: "Comptes sociaux" },
   { href: "/settings", label: "Paramètres" }
 ];
+
+const adminNavigation: Array<{ href: string; label: string }> = [{ href: "/admin", label: "Admin" }];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -44,9 +46,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     return getGravatarUrl(user.email, 96);
   }, [user]);
 
+  const visibleNavigation = useMemo(
+    () => (user?.platformRole === "super_admin" ? [...navigation, ...adminNavigation] : navigation),
+    [user?.platformRole]
+  );
+
   const currentNavLabel = useMemo(() => {
-    return navigation.find((item) => item.href === pathname)?.label ?? null;
-  }, [pathname]);
+    return visibleNavigation.find((item) => item.href === pathname)?.label ?? null;
+  }, [pathname, visibleNavigation]);
 
   const organizationOptions = useMemo(
     () =>
@@ -194,10 +201,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           ) : null}
 
           <nav id="sidebar-navigation" className="sidebar-nav">
-            {navigation.map((item) => (
+            {visibleNavigation.map((item) => (
               <Link
                 key={item.href}
-                href={item.href}
+                href={item.href as Route}
                 className={pathname === item.href ? "active" : ""}
                 onClick={() => setIsMobileNavOpen(false)}
               >

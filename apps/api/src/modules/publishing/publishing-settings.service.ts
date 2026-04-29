@@ -23,7 +23,7 @@ export class PublishingSettingsService {
     userId: string,
     organizationId: string
   ): Promise<SendTelegramTestMessageResult> {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "settings.manage");
 
     if (!this.telegramNotifierService.isConfigured()) {
       throw new BadRequestException("Le bot Telegram n'est pas configure sur le serveur.");

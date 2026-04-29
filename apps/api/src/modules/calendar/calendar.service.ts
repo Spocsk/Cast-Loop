@@ -10,7 +10,7 @@ export class CalendarService {
   ) {}
 
   async getCalendar(userId: string, organizationId: string, from: string, to: string) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "posts.read");
 
     return this.databaseService.query(
       `

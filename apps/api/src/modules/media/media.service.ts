@@ -18,7 +18,7 @@ export class MediaService {
   ) {}
 
   async listForOrganization(organizationId: string, userId: string) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "media.read");
 
     return this.databaseService.query<{
       id: string;
@@ -51,7 +51,7 @@ export class MediaService {
   }
 
   async createUploadUrl(userId: string, dto: CreateUploadUrlDto) {
-    await this.organizationsService.assertMembership(dto.organizationId, userId);
+    await this.organizationsService.assertPermission(dto.organizationId, userId, "media.write");
 
     if (!dto.mimeType.startsWith("image/")) {
       throw new BadRequestException("Only image uploads are allowed in v1");
@@ -106,7 +106,7 @@ export class MediaService {
   }
 
   async createViewUrl(userId: string, organizationId: string, assetId: string) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "media.read");
 
     const [asset] = await this.databaseService.query<{
       id: string;
@@ -146,7 +146,7 @@ export class MediaService {
   }
 
   async deleteMedia(userId: string, organizationId: string, assetId: string) {
-    await this.organizationsService.assertMembership(organizationId, userId);
+    await this.organizationsService.assertPermission(organizationId, userId, "media.delete");
 
     const [asset] = await this.databaseService.query<{
       id: string;
